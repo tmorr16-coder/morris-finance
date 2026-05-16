@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import SignOutButton from "./_components/SignOutButton";
 import ConnectSection from "./_components/ConnectSection";
 import SyncNowButton from "./_components/SyncNowButton";
+import FinanceChat from "./_components/FinanceChat";
 
 interface AccountRow {
   id: string;
@@ -301,6 +302,11 @@ export default async function DashboardPage() {
                   </div>
                 );
               })}
+            </section>
+
+            {/* ── AI insights chat ────────────────────────────────── */}
+            <section style={{ marginBottom: 36 }}>
+              <FinanceChat />
             </section>
 
             {/* ── Accounts grid ───────────────────────────────────── */}
