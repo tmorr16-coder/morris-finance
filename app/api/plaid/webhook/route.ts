@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createHash } from 'crypto';
 import { importJWK, jwtVerify, type JWK } from 'jose';
 import { plaidClient } from '@/lib/plaid';
 import { syncItem } from '@/lib/sync';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 // Cache Plaid's JWK public keys (they rotate periodically)
 const keyCache = new Map<string, { jwk: JWK; fetchedAt: number }>();
@@ -70,8 +71,18 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (item) {
-        // Fire and forget — don't block the webhook response
-        syncItem(item.id).catch((e) => console.error('[webhook sync]', e));
+        // Schedule sync to run AFTER the response is sent. Without `after()`,
+        // the serverless function terminates and kills the in-flight Plaid
+        // call ("socket hang up"). With `after()`, Vercel keeps the function
+        // alive up to maxDuration so the sync can complete.
+        const itemId = item.id;
+        after(async () => {
+          try {
+            await syncItem(itemId);
+          } catch (e) {
+            console.error('[webhook sync]', e);
+          }
+        });
       }
     }
 
