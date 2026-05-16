@@ -16,21 +16,31 @@ export async function POST() {
   }
 
   try {
+    // OAuth institutions (Chase, Capital One) require redirect_uri AND webhook,
+    // both registered in the Plaid dashboard. For sandbox testing with non-OAuth
+    // banks (First Platypus, etc.) we skip both — set PLAID_USE_OAUTH=true once
+    // the redirect URI and webhook are registered in the Plaid dashboard.
+    const useOAuth = process.env.PLAID_USE_OAUTH === 'true';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+
     const { data } = await plaidClient.linkTokenCreate({
       user: { client_user_id: user.id },
       client_name: 'morrisai.family',
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      webhook: `${process.env.NEXT_PUBLIC_APP_URL}/api/plaid/webhook`,
-      // For OAuth institutions (Chase, Capital One), Plaid requires a redirect URI.
-      // This must match what's registered in the Plaid dashboard.
-      redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/oauth-callback`,
+      ...(useOAuth && appUrl
+        ? {
+            webhook: `${appUrl}/api/plaid/webhook`,
+            redirect_uri: `${appUrl}/oauth-callback`,
+          }
+        : {}),
     });
 
     return NextResponse.json({ link_token: data.link_token });
-  } catch (error: any) {
-    console.error('[link-token]', error?.response?.data ?? error.message);
+  } catch (error: unknown) {
+    const errObj = error as { response?: { data?: unknown }; message?: string };
+    console.error('[link-token]', errObj.response?.data ?? errObj.message);
     return NextResponse.json({ error: 'failed to create link token' }, { status: 500 });
   }
 }

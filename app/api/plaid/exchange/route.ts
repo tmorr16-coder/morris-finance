@@ -76,8 +76,9 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, item_id: itemRow.id });
-  } catch (error: any) {
-    console.error('[exchange]', error?.response?.data ?? error.message);
+  } catch (error: unknown) {
+    const errObj = error as { response?: { data?: unknown }; message?: string };
+    console.error('[exchange]', errObj.response?.data ?? errObj.message);
     return NextResponse.json({ error: 'failed to exchange token' }, { status: 500 });
   }
 }
