@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import SignOutButton from "./_components/SignOutButton";
@@ -183,6 +184,7 @@ export default async function DashboardPage() {
 
           <nav style={{ display: "flex", gap: 22, fontSize: 13, letterSpacing: "0.02em" }}>
             <a href="#overview" style={{ color: "var(--color-ink)", textDecoration: "none", padding: "6px 0", borderBottom: "1px solid var(--color-bronze)", fontWeight: 500 }}>Overview</a>
+            <Link href="/dashboard/insights" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Insights</Link>
             <a href="#activity" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Activity</a>
             <a href="#accounts" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Accounts</a>
           </nav>
