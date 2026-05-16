@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { importJWK, jwtVerify } from 'jose';
+import { importJWK, jwtVerify, type JWK } from 'jose';
 import { plaidClient } from '@/lib/plaid';
 import { syncItem } from '@/lib/sync';
 
 export const runtime = 'nodejs';
 
 // Cache Plaid's JWK public keys (they rotate periodically)
-const keyCache = new Map<string, { jwk: any; fetchedAt: number }>();
+const keyCache = new Map<string, { jwk: JWK; fetchedAt: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-async function getPlaidPublicKey(kid: string) {
+async function getPlaidPublicKey(kid: string): Promise<JWK> {
   const cached = keyCache.get(kid);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.jwk;
   }
   const { data } = await plaidClient.webhookVerificationKeyGet({ key_id: kid });
-  keyCache.set(kid, { jwk: data.key, fetchedAt: Date.now() });
-  return data.key;
+  const jwk = data.key as unknown as JWK;
+  keyCache.set(kid, { jwk, fetchedAt: Date.now() });
+  return jwk;
 }
 
 export async function POST(req: NextRequest) {
@@ -75,8 +76,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
-    console.error('[webhook]', error?.message ?? error);
+  } catch (error: unknown) {
+    const msg = (error as { message?: string }).message ?? error;
+    console.error('[webhook]', msg);
     return NextResponse.json({ error: 'invalid webhook' }, { status: 401 });
   }
 }

@@ -16,10 +16,10 @@ export async function POST() {
   }
 
   try {
-    // OAuth institutions (Chase, Capital One) require redirect_uri AND webhook,
-    // both registered in the Plaid dashboard. For sandbox testing with non-OAuth
-    // banks (First Platypus, etc.) we skip both — set PLAID_USE_OAUTH=true once
-    // the redirect URI and webhook are registered in the Plaid dashboard.
+    // OAuth institutions (Chase, Capital One) require redirect_uri to be
+    // registered in the Plaid dashboard, so we gate that behind PLAID_USE_OAUTH.
+    // Webhooks are NOT subject to that restriction in sandbox — we always pass
+    // the webhook URL so Plaid sends transaction-update events.
     const useOAuth = process.env.PLAID_USE_OAUTH === 'true';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
@@ -29,12 +29,8 @@ export async function POST() {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
-      ...(useOAuth && appUrl
-        ? {
-            webhook: `${appUrl}/api/plaid/webhook`,
-            redirect_uri: `${appUrl}/oauth-callback`,
-          }
-        : {}),
+      ...(appUrl ? { webhook: `${appUrl}/api/plaid/webhook` } : {}),
+      ...(useOAuth && appUrl ? { redirect_uri: `${appUrl}/oauth-callback` } : {}),
     });
 
     return NextResponse.json({ link_token: data.link_token });
