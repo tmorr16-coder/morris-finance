@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import PlatformMenu from "@/components/PlatformMenu";
 import SignOutButton from "../_components/SignOutButton";
 import SyncNowButton from "../_components/SyncNowButton";
 import MonthlyTrendChart, { type MonthPoint } from "./_components/MonthlyTrendChart";
@@ -217,18 +218,22 @@ export default async function InsightsPage() {
   const prevMonthOutflow = byMonth.get(prevMonth)?.outflow ?? 0;
   const totalRecurringMonthly = recurring.reduce((s, r) => s + r.monthlyCost, 0);
 
+  const menuUser = {
+    name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+    email: user.email,
+    avatarUrl: user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null,
+  };
+
   return (
     <div>
+
+      <PlatformMenu currentApp="finance" user={menuUser} />
 
       {/* Header */}
       <header
         style={{
           borderBottom: "1px solid var(--color-rule)",
           background: "var(--color-paper)",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          backdropFilter: "blur(8px)",
         }}
       >
         <div
