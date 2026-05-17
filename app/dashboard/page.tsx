@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { createServiceClient } from "@/lib/supabase/server";
+import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SignOutButton from "./_components/SignOutButton";
 import ConnectSection from "./_components/ConnectSection";
@@ -86,9 +86,7 @@ function categoryFromPFC(pfc: { primary?: string; detailed?: string } | null): s
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  const { user, menuUser } = await requireFinanceAccess();
 
   const service = createServiceClient();
 
@@ -147,12 +145,6 @@ export default async function DashboardPage() {
     if (h < 17) return "Good afternoon";
     return "Good evening";
   })();
-
-  const menuUser = {
-    name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-    email: user.email,
-    avatarUrl: user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null,
-  };
 
   return (
     <div>

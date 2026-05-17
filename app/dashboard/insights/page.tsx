@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { createServiceClient } from "@/lib/supabase/server";
+import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SignOutButton from "../_components/SignOutButton";
 import SyncNowButton from "../_components/SyncNowButton";
@@ -116,9 +116,7 @@ function detectRecurring(transactions: TxRow[]): RecurringRow[] {
 }
 
 export default async function InsightsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  const { user, menuUser } = await requireFinanceAccess();
 
   const service = createServiceClient();
 
@@ -217,12 +215,6 @@ export default async function InsightsPage() {
   const currentMonthOutflow = byMonth.get(currentMonth)?.outflow ?? 0;
   const prevMonthOutflow = byMonth.get(prevMonth)?.outflow ?? 0;
   const totalRecurringMonthly = recurring.reduce((s, r) => s + r.monthlyCost, 0);
-
-  const menuUser = {
-    name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-    email: user.email,
-    avatarUrl: user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null,
-  };
 
   return (
     <div>
