@@ -8,6 +8,7 @@ import SignOutButton from "./_components/SignOutButton";
 import ConnectSection from "./_components/ConnectSection";
 import SyncNowButton from "./_components/SyncNowButton";
 import FinanceChat from "./_components/FinanceChat";
+import RecentActivityClient from "./_components/RecentActivityClient";
 
 interface AccountRow {
   id: string;
@@ -19,6 +20,7 @@ interface AccountRow {
   mask: string | null;
   current_balance: number | null;
   iso_currency_code: string;
+  is_hidden: boolean;
 }
 
 interface ItemRow {
@@ -71,20 +73,6 @@ function relativeTime(iso: string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function fmtTxDate(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function categoryFromPFC(pfc: { primary?: string; detailed?: string } | null): string | null {
-  if (!pfc?.primary) return null;
-  return pfc.primary
-    .toLowerCase()
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 export default async function DashboardPage() {
   const { user, menuUser } = await requireFinanceAccess();
 
@@ -105,7 +93,7 @@ export default async function DashboardPage() {
     service
       .schema("finance")
       .from("accounts")
-      .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code")
+      .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code, is_hidden")
       .order("type", { ascending: true })
       .order("name", { ascending: true }),
     service
@@ -113,20 +101,40 @@ export default async function DashboardPage() {
       .from("transactions")
       .select("id, account_id, date, amount, merchant_name, name, pending, personal_finance_category")
       .order("date", { ascending: false })
-      .limit(50),
+      .limit(500),
   ]);
 
   const items: ItemRow[] = (itemRows as ItemRow[]) ?? [];
-  const accounts: AccountRow[] = (accountRowsRaw as AccountRow[]) ?? [];
-  const transactions: TxRow[] = (txRowsRaw as TxRow[]) ?? [];
+  const allAccounts: AccountRow[] = (accountRowsRaw as AccountRow[]) ?? [];
+  // Hidden accounts stay synced + visible in /dashboard/settings, but are
+  // excluded from totals, the accounts grid, and transaction filtering.
+  const accounts = allAccounts.filter((a) => !a.is_hidden);
+  const hiddenIds = new Set(allAccounts.filter((a) => a.is_hidden).map((a) => a.id));
+  const txAll: TxRow[] = (txRowsRaw as TxRow[]) ?? [];
+  const transactions = txAll.filter((t) => !hiddenIds.has(t.account_id));
 
-  const accountById = new Map(accounts.map((a) => [a.id, a]));
   const name = user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? "there";
   const firstName = name.split(" ")[0];
 
-  // Net position = sum of all account current balances
-  // (credit card balances are reported positive by Plaid even though they're liabilities;
-  // we subtract them to get net worth)
+  // Group visible accounts by type for the dashboard layout.
+  // Investments are split into their own section so spending-side totals
+  // (the Net position) treat brokerage balances correctly.
+  function bucket(t: string): "cash" | "credit" | "loan" | "investment" | "other" {
+    if (t === "depository") return "cash";
+    if (t === "credit") return "credit";
+    if (t === "loan") return "loan";
+    if (t === "investment" || t === "brokerage") return "investment";
+    return "other";
+  }
+  const accountsByBucket = {
+    cash: accounts.filter((a) => bucket(a.type) === "cash"),
+    credit: accounts.filter((a) => bucket(a.type) === "credit"),
+    loan: accounts.filter((a) => bucket(a.type) === "loan"),
+    investment: accounts.filter((a) => bucket(a.type) === "investment"),
+    other: accounts.filter((a) => bucket(a.type) === "other"),
+  };
+
+  // Net position = cash + investments − credit − loan, computed from visible accounts only.
   const netPosition = accounts.reduce((sum, a) => {
     const bal = a.current_balance ?? 0;
     return sum + (a.type === "credit" || a.type === "loan" ? -bal : bal);
@@ -199,6 +207,7 @@ export default async function DashboardPage() {
             <Link href="/dashboard/insights" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Insights</Link>
             <a href="#activity" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Activity</a>
             <a href="#accounts" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Accounts</a>
+            <Link href="/dashboard/settings" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Settings</Link>
           </nav>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -323,58 +332,84 @@ export default async function DashboardPage() {
               <FinanceChat />
             </section>
 
-            {/* ── Accounts grid ───────────────────────────────────── */}
+            {/* ── Accounts (grouped by type) ──────────────────────── */}
             <section id="accounts" style={{ marginBottom: 36 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--color-rule)" }}>
                 <h2 className="serif" style={{ fontSize: 24 }}>Accounts</h2>
                 <span style={{ fontSize: 11, color: "var(--color-ink-3)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                  {accounts.length} connected
+                  {accounts.length} visible{allAccounts.length !== accounts.length ? ` · ${allAccounts.length - accounts.length} hidden` : ""}
                 </span>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
-                {accounts.map((a) => {
-                  const isLiability = a.type === "credit" || a.type === "loan";
+              {(["cash", "credit", "loan", "investment", "other"] as const).map((bucketKey) => {
+                const group = accountsByBucket[bucketKey];
+                if (group.length === 0) return null;
+                const label =
+                  bucketKey === "cash" ? "Cash & savings" :
+                  bucketKey === "credit" ? "Credit" :
+                  bucketKey === "loan" ? "Loans" :
+                  bucketKey === "investment" ? "Investments" :
+                  "Other";
+                const subtotal = group.reduce((s, a) => {
                   const bal = a.current_balance ?? 0;
-                  const displayBal = isLiability ? -bal : bal;
-                  return (
-                    <div
-                      key={a.id}
-                      style={{
-                        background: "var(--color-paper-card)",
-                        border: "1px solid var(--color-rule)",
-                        borderRadius: 12,
-                        padding: "16px 18px 14px",
-                        boxShadow: "var(--shadow-card)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                        <div>
-                          <div className="serif" style={{ fontSize: 16, color: "var(--color-ink)" }}>{a.name}</div>
-                          <div style={{ fontSize: 10, color: "var(--color-ink-3)", textTransform: "capitalize", marginTop: 2, letterSpacing: "0.04em" }}>
-                            {a.type} {a.subtype ? `· ${a.subtype.replace(/_/g, " ")}` : ""}
-                          </div>
-                        </div>
-                        {a.mask && (
-                          <div className="mono" style={{ fontSize: 11, color: "var(--color-ink-4)" }}>
-                            ····{a.mask}
-                          </div>
-                        )}
-                      </div>
-                      <div
-                        className="mono"
-                        style={{
-                          fontSize: 22,
-                          fontWeight: 500,
-                          color: displayBal < 0 ? "var(--color-red)" : "var(--color-ink)",
-                        }}
-                      >
-                        {fmtMoney(displayBal, a.iso_currency_code)}
-                      </div>
+                  return s + (bucketKey === "credit" || bucketKey === "loan" ? -bal : bal);
+                }, 0);
+                return (
+                  <div key={bucketKey} style={{ marginBottom: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                      <h3 style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-ink-3)" }}>
+                        {label} <span style={{ color: "var(--color-ink-4)", fontWeight: 400 }}>· {group.length}</span>
+                      </h3>
+                      <span className="mono" style={{ fontSize: 13, color: subtotal < 0 ? "var(--color-red)" : "var(--color-ink-2)", fontWeight: 500 }}>
+                        {fmtMoney(subtotal)}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+                      {group.map((a) => {
+                        const isLiability = a.type === "credit" || a.type === "loan";
+                        const bal = a.current_balance ?? 0;
+                        const displayBal = isLiability ? -bal : bal;
+                        return (
+                          <div
+                            key={a.id}
+                            style={{
+                              background: "var(--color-paper-card)",
+                              border: "1px solid var(--color-rule)",
+                              borderRadius: 12,
+                              padding: "16px 18px 14px",
+                              boxShadow: "var(--shadow-card)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                              <div>
+                                <div className="serif" style={{ fontSize: 16, color: "var(--color-ink)" }}>{a.name}</div>
+                                <div style={{ fontSize: 10, color: "var(--color-ink-3)", textTransform: "capitalize", marginTop: 2, letterSpacing: "0.04em" }}>
+                                  {a.subtype ? a.subtype.replace(/_/g, " ") : a.type}
+                                </div>
+                              </div>
+                              {a.mask && (
+                                <div className="mono" style={{ fontSize: 11, color: "var(--color-ink-4)" }}>
+                                  ····{a.mask}
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              className="mono"
+                              style={{
+                                fontSize: 22,
+                                fontWeight: 500,
+                                color: displayBal < 0 ? "var(--color-red)" : "var(--color-ink)",
+                              }}
+                            >
+                              {fmtMoney(displayBal, a.iso_currency_code)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </section>
 
             {/* ── Recent activity ─────────────────────────────────── */}
@@ -386,102 +421,10 @@ export default async function DashboardPage() {
                 </span>
               </div>
 
-              {transactions.length === 0 ? (
-                <p style={{ fontSize: 13, color: "var(--color-ink-4)", padding: "24px 0", textAlign: "center" }}>
-                  No transactions yet — they'll appear here after the next sync.
-                </p>
-              ) : (
-                <div
-                  style={{
-                    background: "var(--color-paper-card)",
-                    border: "1px solid var(--color-rule)",
-                    borderRadius: 12,
-                    overflow: "hidden",
-                    boxShadow: "var(--shadow-card)",
-                  }}
-                >
-                  {/* Header row */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "90px 1fr 130px 160px 120px",
-                      padding: "10px 18px",
-                      borderBottom: "1px solid var(--color-rule)",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
-                      color: "var(--color-ink-3)",
-                      background: "var(--color-paper-deep)",
-                    }}
-                  >
-                    <div>Date</div>
-                    <div>Merchant</div>
-                    <div>Category</div>
-                    <div>Account</div>
-                    <div style={{ textAlign: "right" }}>Amount</div>
-                  </div>
-                  {transactions.map((tx, idx) => {
-                    const acct = accountById.get(tx.account_id);
-                    const category = categoryFromPFC(tx.personal_finance_category);
-                    const isIncome = tx.amount < 0; // Plaid: positive = outflow
-                    return (
-                      <div
-                        key={tx.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "90px 1fr 130px 160px 120px",
-                          padding: "12px 18px",
-                          borderTop: idx === 0 ? undefined : "1px solid var(--color-rule-soft)",
-                          fontSize: 13,
-                          alignItems: "center",
-                        }}
-                      >
-                        <div className="mono" style={{ fontSize: 12, color: "var(--color-ink-3)" }}>
-                          {fmtTxDate(tx.date)}
-                        </div>
-                        <div style={{ color: "var(--color-ink)", display: "flex", alignItems: "center", gap: 8 }}>
-                          {tx.merchant_name ?? tx.name}
-                          {tx.pending && (
-                            <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "var(--color-paper-deep)", color: "var(--color-ink-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Pending
-                            </span>
-                          )}
-                        </div>
-                        <div>
-                          {category && (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                padding: "2px 8px",
-                                borderRadius: 12,
-                                background: "var(--color-paper-deep)",
-                                color: "var(--color-ink-2)",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {category}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--color-ink-3)" }}>
-                          {acct ? `${acct.name.split(" ")[0]} ····${acct.mask ?? ""}` : "—"}
-                        </div>
-                        <div
-                          className="mono"
-                          style={{
-                            textAlign: "right",
-                            color: isIncome ? "var(--color-green)" : "var(--color-ink)",
-                            fontWeight: isIncome ? 500 : 400,
-                          }}
-                        >
-                          {isIncome ? "+" : "−"}{fmtMoney(Math.abs(tx.amount))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <RecentActivityClient
+                transactions={transactions}
+                accounts={accounts.map((a) => ({ id: a.id, name: a.name, mask: a.mask }))}
+              />
 
               <div style={{ marginTop: 20, display: "flex", justifyContent: "center" }}>
                 <ConnectSection label="Connect another bank" variant="secondary" />

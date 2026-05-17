@@ -41,10 +41,38 @@ function monthLabel(key: string): string {
   return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 }
 
+// Picks the most common account_id from a transaction list and returns
+// a short label like "Chase ····4321" for display.
+function topAccountSource(
+  txns: TxRow[],
+  accountById: Map<string, { name: string; mask: string | null }>
+): string | null {
+  if (txns.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const t of txns) {
+    counts.set(t.account_id, (counts.get(t.account_id) ?? 0) + 1);
+  }
+  let topId: string | null = null;
+  let topCount = 0;
+  for (const [id, c] of counts) {
+    if (c > topCount) {
+      topCount = c;
+      topId = id;
+    }
+  }
+  if (!topId) return null;
+  const acct = accountById.get(topId);
+  if (!acct) return null;
+  return `${acct.name.split(" ")[0]}${acct.mask ? ` ····${acct.mask}` : ""}`;
+}
+
 // ── Recurring charge detection ─────────────────────────────────────────────
 // Groups transactions by normalized merchant, finds groups with consistent
 // amounts and regular cadence (weekly / biweekly / monthly).
-function detectRecurring(transactions: TxRow[]): RecurringRow[] {
+function detectRecurring(
+  transactions: TxRow[],
+  accountById: Map<string, { name: string; mask: string | null }>
+): RecurringRow[] {
   const byMerchant = new Map<string, TxRow[]>();
   for (const t of transactions) {
     if (t.amount <= 0) continue; // outflows only
@@ -109,18 +137,34 @@ function detectRecurring(transactions: TxRow[]): RecurringRow[] {
       occurrences: sorted.length,
       category,
       key,
+      accountSource: topAccountSource(sorted, accountById),
     });
   }
 
   return recurring.sort((a, b) => b.monthlyCost - a.monthlyCost);
 }
 
-export default async function InsightsPage() {
+interface InsightsAccount {
+  id: string;
+  name: string;
+  mask: string | null;
+  is_hidden: boolean;
+}
+
+export default async function InsightsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { user, menuUser } = await requireFinanceAccess();
+  const params = await searchParams;
+  const rawTopN = Array.isArray(params.topN) ? params.topN[0] : params.topN;
+  const parsed = rawTopN ? parseInt(rawTopN, 10) : 10;
+  const topN = Number.isFinite(parsed) ? Math.max(5, Math.min(100, parsed)) : 10;
 
   const service = createServiceClient();
 
-  // Get user's accounts
+  // Get user's accounts (visible only)
   const { data: itemRows } = await service
     .schema("finance")
     .from("plaid_items")
@@ -129,13 +173,17 @@ export default async function InsightsPage() {
   const itemIds = (itemRows ?? []).map((r) => r.id);
 
   let transactions: TxRow[] = [];
+  const accountById = new Map<string, { name: string; mask: string | null }>();
   if (itemIds.length > 0) {
     const { data: acctRows } = await service
       .schema("finance")
       .from("accounts")
-      .select("id")
+      .select("id, name, mask, is_hidden")
       .in("item_id", itemIds);
-    const acctIds = (acctRows ?? []).map((a) => a.id);
+    const allAccts = ((acctRows as InsightsAccount[]) ?? []);
+    const visibleAccts = allAccts.filter((a) => !a.is_hidden);
+    for (const a of visibleAccts) accountById.set(a.id, { name: a.name, mask: a.mask });
+    const acctIds = visibleAccts.map((a) => a.id);
 
     if (acctIds.length > 0) {
       // Pull last 12 months of transactions
@@ -171,29 +219,70 @@ export default async function InsightsPage() {
   const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const prevMonth = prevDate.toISOString().slice(0, 7);
 
+  // Build top-level + detailed (subcategory) totals so the UI can drill
+  // into "Food and Drink → Coffee Shops, Restaurants, Groceries…"
+  function detailedLabel(pfc: { detailed?: string } | null | undefined): string {
+    if (!pfc?.detailed) return "Other";
+    return pfc.detailed
+      .toLowerCase()
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
   const currentByCat = new Map<string, number>();
   const prevByCat = new Map<string, number>();
+  const currentDetail = new Map<string, Map<string, number>>(); // primary → detailed → amt
+  const prevDetail = new Map<string, Map<string, number>>();
   for (const t of transactions) {
     if (t.amount <= 0) continue;
     const cat = categoryFromPFC(t.personal_finance_category);
+    const sub = detailedLabel(t.personal_finance_category);
     const mk = monthKey(t.date);
-    if (mk === currentMonth) currentByCat.set(cat, (currentByCat.get(cat) ?? 0) + t.amount);
-    else if (mk === prevMonth) prevByCat.set(cat, (prevByCat.get(cat) ?? 0) + t.amount);
+    if (mk === currentMonth) {
+      currentByCat.set(cat, (currentByCat.get(cat) ?? 0) + t.amount);
+      if (!currentDetail.has(cat)) currentDetail.set(cat, new Map());
+      const sm = currentDetail.get(cat)!;
+      sm.set(sub, (sm.get(sub) ?? 0) + t.amount);
+    } else if (mk === prevMonth) {
+      prevByCat.set(cat, (prevByCat.get(cat) ?? 0) + t.amount);
+      if (!prevDetail.has(cat)) prevDetail.set(cat, new Map());
+      const sm = prevDetail.get(cat)!;
+      sm.set(sub, (sm.get(sub) ?? 0) + t.amount);
+    }
   }
   const allCategories = new Set([...currentByCat.keys(), ...prevByCat.keys()]);
   const categoryBreakdown: CategoryRow[] = Array.from(allCategories)
-    .map((cat) => ({
-      category: cat,
-      current: currentByCat.get(cat) ?? 0,
-      previous: prevByCat.get(cat) ?? 0,
-    }))
+    .map((cat) => {
+      const curSub = currentDetail.get(cat) ?? new Map();
+      const prevSub = prevDetail.get(cat) ?? new Map();
+      const subKeys = new Set([...curSub.keys(), ...prevSub.keys()]);
+      const details = Array.from(subKeys)
+        .map((s) => ({
+          subcategory: s,
+          current: curSub.get(s) ?? 0,
+          previous: prevSub.get(s) ?? 0,
+        }))
+        .sort((a, b) => b.current - a.current);
+      return {
+        category: cat,
+        current: currentByCat.get(cat) ?? 0,
+        previous: prevByCat.get(cat) ?? 0,
+        details,
+      };
+    })
     .sort((a, b) => b.current - a.current);
 
   // ── Recurring charges ─────────────────────────────────────────────────
-  const recurring = detectRecurring(transactions);
+  const recurring = detectRecurring(transactions, accountById);
 
   // ── Top merchants this month ──────────────────────────────────────────
-  const merchantsThisMonth = new Map<string, { merchant: string; total: number; count: number; category: string }>();
+  // Track the constituent transactions per merchant so we can also report
+  // which account is the most common source for each.
+  const merchantsThisMonth = new Map<
+    string,
+    { merchant: string; total: number; count: number; category: string; txns: TxRow[] }
+  >();
   for (const t of transactions) {
     if (t.amount <= 0) continue;
     if (monthKey(t.date) !== currentMonth) continue;
@@ -201,15 +290,23 @@ export default async function InsightsPage() {
     if (!merchant) continue;
     const key = merchant.toLowerCase();
     if (!merchantsThisMonth.has(key)) {
-      merchantsThisMonth.set(key, { merchant, total: 0, count: 0, category: categoryFromPFC(t.personal_finance_category) });
+      merchantsThisMonth.set(key, { merchant, total: 0, count: 0, category: categoryFromPFC(t.personal_finance_category), txns: [] });
     }
     const m = merchantsThisMonth.get(key)!;
     m.total += t.amount;
     m.count += 1;
+    m.txns.push(t);
   }
   const topMerchants: MerchantRow[] = Array.from(merchantsThisMonth.values())
     .sort((a, b) => b.total - a.total)
-    .slice(0, 10);
+    .slice(0, topN)
+    .map((m) => ({
+      merchant: m.merchant,
+      total: m.total,
+      count: m.count,
+      category: m.category,
+      accountSource: topAccountSource(m.txns, accountById),
+    }));
 
   // ── Summary stats ─────────────────────────────────────────────────────
   const currentMonthOutflow = byMonth.get(currentMonth)?.outflow ?? 0;
@@ -308,9 +405,34 @@ export default async function InsightsPage() {
             {/* Category breakdown */}
             <CategoryBreakdown rows={categoryBreakdown.slice(0, 12)} />
 
+            {/* Top-N picker — controls how many rows show in Recurring + Top merchants */}
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, paddingBottom: 4, fontSize: 11, color: "var(--color-ink-3)" }}>
+              <span style={{ letterSpacing: "0.08em", textTransform: "uppercase" }}>Show top</span>
+              {[10, 20, 50, 100].map((n) => (
+                <Link
+                  key={n}
+                  href={`/dashboard/insights?topN=${n}#top`}
+                  scroll={false}
+                  prefetch={false}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 14,
+                    border: `1px solid ${n === topN ? "var(--color-bronze)" : "var(--color-rule)"}`,
+                    background: n === topN ? "var(--color-bronze)" : "transparent",
+                    color: n === topN ? "#fff" : "var(--color-ink-2)",
+                    textDecoration: "none",
+                    fontWeight: 600,
+                    fontSize: 11,
+                  }}
+                >
+                  {n}
+                </Link>
+              ))}
+            </div>
+
             {/* Recurring + top merchants — side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
-              <RecurringCharges rows={recurring.slice(0, 10)} />
+            <div id="top" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 14 }}>
+              <RecurringCharges rows={recurring.slice(0, topN)} />
               <TopMerchants rows={topMerchants} />
             </div>
 

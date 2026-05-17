@@ -5,6 +5,7 @@ export interface MerchantRow {
   total: number;
   count: number;
   category: string;
+  accountSource: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -61,8 +62,16 @@ export default function TopMerchants({ rows }: { rows: MerchantRow[] }) {
                     <div style={{ fontSize: 13, color: "var(--color-ink)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {r.merchant}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginTop: 2 }}>
-                      {r.category} · {r.count}×
+                    <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginTop: 2, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <span>{r.category}</span>
+                      <span>·</span>
+                      <span>{r.count}×</span>
+                      {r.accountSource && (
+                        <>
+                          <span>·</span>
+                          <span style={{ color: "var(--color-ink-4)" }}>{r.accountSource}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

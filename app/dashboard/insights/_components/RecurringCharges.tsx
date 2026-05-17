@@ -9,6 +9,7 @@ export interface RecurringRow {
   occurrences: number;
   category: string;
   key: string;
+  accountSource: string | null;
 }
 
 function fmtMoney(n: number): string {
@@ -58,6 +59,7 @@ export default function RecurringCharges({ rows }: { rows: RecurringRow[] }) {
                 </div>
                 <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginTop: 2 }}>
                   {r.cadence} · {r.occurrences}× · last {relativeDays(r.lastCharged)}
+                  {r.accountSource && <span style={{ color: "var(--color-ink-4)" }}> · {r.accountSource}</span>}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
