@@ -139,12 +139,27 @@ export default async function DashboardPage() {
     return latest;
   }, null);
 
+  // Pin to Indianapolis time. Vercel functions run in UTC by default,
+  // so we must compute the local hour explicitly via toLocaleString.
+  const userTz = "America/Indiana/Indianapolis";
+  const today = new Date();
+  const localHour = parseInt(
+    today.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: userTz }),
+    10
+  );
   const greeting = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return "Good morning";
-    if (h < 17) return "Good afternoon";
+    if (localHour < 5) return "Good evening";
+    if (localHour < 12) return "Good morning";
+    if (localHour < 17) return "Good afternoon";
     return "Good evening";
   })();
+  const todayDisplay = today.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: userTz,
+  });
 
   return (
     <div>
@@ -211,7 +226,7 @@ export default async function DashboardPage() {
         >
           <div>
             <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--color-ink-3)", marginBottom: 10 }}>
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              {todayDisplay}
             </div>
             <h1 className="serif" style={{ fontSize: 44, lineHeight: 1.05 }}>
               {greeting},
