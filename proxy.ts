@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 const COOKIE_DOMAIN = process.env.NEXT_PUBLIC_COOKIE_DOMAIN;
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -28,17 +28,12 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Local dev bypass before OAuth is configured
-  if (process.env.NEXT_PUBLIC_AUTH_BYPASS === "true") {
-    return response;
-  }
+  if (process.env.NEXT_PUBLIC_AUTH_BYPASS === "true") return response;
 
   const { data: { user } } = await supabase.auth.getUser();
-
   if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
     return NextResponse.redirect(new URL("/", request.url));
   }
-
   return response;
 }
 
