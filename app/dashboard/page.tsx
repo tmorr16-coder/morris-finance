@@ -9,6 +9,7 @@ import ConnectSection from "./_components/ConnectSection";
 import SyncNowButton from "./_components/SyncNowButton";
 import FinanceChat from "./_components/FinanceChat";
 import RecentActivityClient from "./_components/RecentActivityClient";
+import PinGate from "./_components/PinGate";
 
 interface AccountRow {
   id: string;
@@ -77,6 +78,17 @@ export default async function DashboardPage() {
   const { user, menuUser } = await requireFinanceAccess();
 
   const service = createServiceClient();
+
+  // Fetch PIN from hub preferences (null = no PIN required)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: prefData } = await (service as any)
+    .schema("hub")
+    .from("preferences")
+    .select("finance_pin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const financePin: string | null = (prefData as any)?.finance_pin ?? null;
 
   // Fetch items, accounts, recent transactions in parallel
   const [
@@ -170,6 +182,7 @@ export default async function DashboardPage() {
   });
 
   return (
+    <PinGate enabled={!!financePin} correctPin={financePin ?? ""}>
     <div>
 
       <PlatformMenu currentApp="finance" user={menuUser} />
@@ -451,5 +464,6 @@ export default async function DashboardPage() {
         <span>finance.morrisai.family</span>
       </footer>
     </div>
+    </PinGate>
   );
 }

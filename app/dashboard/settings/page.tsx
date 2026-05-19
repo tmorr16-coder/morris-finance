@@ -5,11 +5,21 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SettingsClient, { type AccountRow } from "./_components/SettingsClient";
+import PinSettings from "./_components/PinSettings";
 
 export default async function SettingsPage() {
   const { user, menuUser } = await requireFinanceAccess();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
+
+  const { data: prefs } = await service
+    .schema("hub")
+    .from("preferences")
+    .select("finance_pin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const currentPin: string | null = (prefs as any)?.finance_pin ?? null;
 
   const { data: itemRows } = await service
     .schema("finance")
@@ -67,6 +77,10 @@ export default async function SettingsPage() {
             They stay connected to Plaid — sync continues — but they won&apos;t show in totals.
           </p>
         </section>
+
+        <div style={{ marginBottom: 32, background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "22px 26px", boxShadow: "var(--shadow-card)" }}>
+          <PinSettings currentPin={currentPin} />
+        </div>
 
         <SettingsClient initialAccounts={accounts} itemNameById={Object.fromEntries(itemMap)} />
       </main>
