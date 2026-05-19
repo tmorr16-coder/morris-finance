@@ -28,31 +28,43 @@ export default function PinSettings({ currentPin }: { currentPin: string | null 
     if (!/^\d{4}$/.test(pin)) { setErr("PIN must be exactly 4 digits"); return; }
     if (pin !== confirm) { setErr("PINs don't match"); return; }
     setSaving(true);
-    const supabase = makeClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setErr("Not signed in"); setSaving(false); return; }
-    const { error } = await supabase
-      .schema("hub")
-      .from("preferences")
-      .upsert({ user_id: user.id, finance_pin: pin }, { onConflict: "user_id" });
-    setSaving(false);
-    if (error) { setErr(error.message); return; }
-    setMsg("PIN saved"); setMode("view"); setPin(""); setConfirm("");
-    setTimeout(() => setMsg(null), 3000);
+    try {
+      const supabase = makeClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setErr("Not signed in"); return; }
+      // Use public.profiles.id to match; hub.preferences is keyed by user_id.
+      const { error } = await supabase
+        .schema("hub")
+        .from("preferences")
+        .upsert({ user_id: user.id, finance_pin: pin }, { onConflict: "user_id" });
+      if (error) { setErr(error.message); return; }
+      setMsg("PIN saved"); setMode("view"); setPin(""); setConfirm("");
+      setTimeout(() => setMsg(null), 3000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed — try again");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function remove() {
     setSaving(true);
-    const supabase = makeClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
-    await supabase
-      .schema("hub")
-      .from("preferences")
-      .upsert({ user_id: user.id, finance_pin: null }, { onConflict: "user_id" });
-    setSaving(false);
-    setMsg("PIN removed"); setMode("view");
-    setTimeout(() => { setMsg(null); window.location.reload(); }, 1000);
+    try {
+      const supabase = makeClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setErr("Not signed in"); return; }
+      const { error } = await supabase
+        .schema("hub")
+        .from("preferences")
+        .upsert({ user_id: user.id, finance_pin: null }, { onConflict: "user_id" });
+      if (error) { setErr(error.message); return; }
+      setMsg("PIN removed"); setMode("view");
+      setTimeout(() => { setMsg(null); window.location.reload(); }, 1000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Remove failed — try again");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
