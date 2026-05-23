@@ -223,6 +223,7 @@ export default async function DashboardPage() {
             <Link href="/dashboard/insights" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Insights</Link>
             <a href="#activity" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Activity</a>
             <a href="#accounts" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Accounts</a>
+            <Link href="/dashboard/import" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Import</Link>
             <Link href="/dashboard/settings" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Settings</Link>
           </nav>
 
