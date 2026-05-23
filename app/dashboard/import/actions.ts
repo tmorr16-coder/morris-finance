@@ -158,6 +158,48 @@ export async function importStatement(formData: FormData): Promise<{ error?: str
   return { id: row.id };
 }
 
+export async function saveManualBalance(data: {
+  name: string;
+  institution: string | null;
+  accountType: string;
+  balance: number;
+  asOfDate: string;
+  history: { date: string; balance: number; rate: number | null }[] | null;
+}): Promise<{ error?: string; id?: string }> {
+  const { user } = await requireFinanceAccess();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const service = createServiceClient() as any;
+
+  // Store monthly history as holdings array for display purposes
+  const holdings = data.history?.map((h) => ({
+    name: h.date,
+    value: h.balance,
+    pct: h.rate,
+    shares: null,
+    price: null,
+  })) ?? null;
+
+  const { data: row, error } = await service
+    .schema("finance")
+    .from("manual_accounts")
+    .insert({
+      user_id: user.id,
+      name: data.name,
+      institution: data.institution,
+      account_type: data.accountType,
+      balance: data.balance,
+      as_of_date: data.asOfDate,
+      currency: "USD",
+      holdings,
+      source: "manual",
+    })
+    .select("id")
+    .single();
+
+  if (error) return { error: error.message };
+  return { id: row.id };
+}
+
 export async function deleteManualAccount(id: string): Promise<{ error?: string }> {
   const { user } = await requireFinanceAccess();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

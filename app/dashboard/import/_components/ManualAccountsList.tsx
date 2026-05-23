@@ -88,23 +88,45 @@ export default function ManualAccountsList({ initialAccounts }: { initialAccount
             </div>
           </div>
 
-          {/* Holdings table */}
+          {/* History / Holdings table */}
           {expanded.has(a.id) && a.holdings && a.holdings.length > 0 && (
             <div style={{ borderTop: "1px solid var(--color-rule)" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px", padding: "8px 18px", background: "var(--color-paper-deep)", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-ink-3)" }}>
-                <div>Fund</div>
-                <div style={{ textAlign: "right" }}>Value</div>
-                <div style={{ textAlign: "right" }}>Alloc %</div>
-              </div>
-              {a.holdings.map((h, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px", padding: "10px 18px", borderTop: "1px solid var(--color-rule-soft)", alignItems: "center" }}>
-                  <div style={{ fontSize: 13, color: "var(--color-ink)" }}>{h.name}</div>
-                  <div className="mono" style={{ fontSize: 13, color: "var(--color-ink-2)", textAlign: "right" }}>{fmtMoney(h.value)}</div>
-                  <div className="mono" style={{ fontSize: 12, color: "var(--color-ink-3)", textAlign: "right" }}>
-                    {h.pct != null ? `${h.pct.toFixed(1)}%` : "—"}
+              {/* Detect if this is balance history (source=manual, name looks like a date) or fund holdings */}
+              {a.source === "manual" && /^\d{4}-\d{2}-\d{2}/.test(a.holdings[0]?.name ?? "") ? (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px", padding: "8px 18px", background: "var(--color-paper-deep)", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-ink-3)" }}>
+                    <div>Month</div>
+                    <div style={{ textAlign: "right" }}>Balance</div>
+                    <div style={{ textAlign: "right" }}>Return</div>
                   </div>
-                </div>
-              ))}
+                  {a.holdings.map((h, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px", padding: "9px 18px", borderTop: "1px solid var(--color-rule-soft)", alignItems: "center" }}>
+                      <div className="mono" style={{ fontSize: 12, color: "var(--color-ink-3)" }}>{h.name}</div>
+                      <div className="mono" style={{ fontSize: 13, color: "var(--color-ink-2)", textAlign: "right" }}>{fmtMoney(h.value)}</div>
+                      <div style={{ fontSize: 12, textAlign: "right", color: h.pct == null ? "var(--color-ink-4)" : h.pct >= 0 ? "var(--color-green)" : "var(--color-red)" }}>
+                        {h.pct != null ? `${h.pct > 0 ? "+" : ""}${h.pct.toFixed(2)}%` : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px", padding: "8px 18px", background: "var(--color-paper-deep)", fontSize: 9, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--color-ink-3)" }}>
+                    <div>Fund</div>
+                    <div style={{ textAlign: "right" }}>Value</div>
+                    <div style={{ textAlign: "right" }}>Alloc %</div>
+                  </div>
+                  {a.holdings.map((h, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px 80px", padding: "10px 18px", borderTop: "1px solid var(--color-rule-soft)", alignItems: "center" }}>
+                      <div style={{ fontSize: 13, color: "var(--color-ink)" }}>{h.name}</div>
+                      <div className="mono" style={{ fontSize: 13, color: "var(--color-ink-2)", textAlign: "right" }}>{fmtMoney(h.value)}</div>
+                      <div className="mono" style={{ fontSize: 12, color: "var(--color-ink-3)", textAlign: "right" }}>
+                        {h.pct != null ? `${h.pct.toFixed(1)}%` : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </div>
