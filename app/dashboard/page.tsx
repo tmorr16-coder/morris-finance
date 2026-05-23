@@ -86,6 +86,7 @@ export default async function DashboardPage() {
     { data: itemRows },
     { data: accountRowsRaw },
     { data: txRowsRaw },
+    { data: manualRows },
   ] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (service as any)
@@ -106,14 +107,18 @@ export default async function DashboardPage() {
       .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code, is_hidden")
       .order("type", { ascending: true })
       .order("name", { ascending: true }),
-    // 100 rows is plenty for the initial view; client "Load 50 more" handles the rest.
-    // 500 rows was the bottleneck — 5× more data than needed on every page load.
     service
       .schema("finance")
       .from("transactions")
       .select("id, account_id, date, amount, merchant_name, name, pending, personal_finance_category")
       .order("date", { ascending: false })
       .limit(100),
+    service
+      .schema("finance")
+      .from("manual_accounts")
+      .select("id, name, institution, account_type, balance, as_of_date, currency, holdings, source")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,12 +126,23 @@ export default async function DashboardPage() {
 
   const items: ItemRow[] = (itemRows as ItemRow[]) ?? [];
   const allAccounts: AccountRow[] = (accountRowsRaw as AccountRow[]) ?? [];
-  // Hidden accounts stay synced + visible in /dashboard/settings, but are
-  // excluded from totals, the accounts grid, and transaction filtering.
   const accounts = allAccounts.filter((a) => !a.is_hidden);
   const hiddenIds = new Set(allAccounts.filter((a) => a.is_hidden).map((a) => a.id));
   const txAll: TxRow[] = (txRowsRaw as TxRow[]) ?? [];
   const transactions = txAll.filter((t) => !hiddenIds.has(t.account_id));
+
+  interface ManualAccountRow {
+    id: string;
+    name: string;
+    institution: string | null;
+    account_type: string;
+    balance: number | null;
+    as_of_date: string | null;
+    currency: string;
+    holdings: { name: string; value: number; pct: number | null }[] | null;
+    source: string;
+  }
+  const manualAccounts: ManualAccountRow[] = (manualRows as ManualAccountRow[]) ?? [];
 
   const name = user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? "there";
   const firstName = name.split(" ")[0];
@@ -149,11 +165,12 @@ export default async function DashboardPage() {
     other: accounts.filter((a) => bucket(a.type) === "other"),
   };
 
-  // Net position = cash + investments − credit − loan, computed from visible accounts only.
+  // Net position = Plaid accounts + manual accounts (investments add, loans/credit subtract).
+  const manualTotal = manualAccounts.reduce((sum, a) => sum + (a.balance ?? 0), 0);
   const netPosition = accounts.reduce((sum, a) => {
     const bal = a.current_balance ?? 0;
     return sum + (a.type === "credit" || a.type === "loan" ? -bal : bal);
-  }, 0);
+  }, 0) + manualTotal;
   const netFmt = fmtMoneyLarge(netPosition);
 
   const lastSyncAcrossItems = items.reduce<string | null>((latest, it) => {
@@ -268,7 +285,7 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          {items.length > 0 && (
+          {(items.length > 0 || manualAccounts.length > 0) && (
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--color-ink-3)", marginBottom: 6 }}>
                 Net position
@@ -278,7 +295,10 @@ export default async function DashboardPage() {
                 <span style={{ fontSize: "0.55em", color: "var(--color-ink-3)" }}>{netFmt.cents}</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--color-ink-3)", marginTop: 6 }}>
-                across {accounts.length} account{accounts.length !== 1 ? "s" : ""}
+                across {accounts.length + manualAccounts.length} account{(accounts.length + manualAccounts.length) !== 1 ? "s" : ""}
+                {manualAccounts.length > 0 && (
+                  <span style={{ color: "var(--color-ink-4)" }}> ({manualAccounts.length} imported)</span>
+                )}
               </div>
             </div>
           )}
@@ -428,6 +448,52 @@ export default async function DashboardPage() {
                 );
               })}
             </section>
+
+            {/* ── Imported / manual accounts ───────────────────────── */}
+            {manualAccounts.length > 0 && (
+              <section style={{ marginBottom: 36 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--color-rule)" }}>
+                  <h2 className="serif" style={{ fontSize: 24 }}>Imported accounts</h2>
+                  <a href="/dashboard/import" style={{ fontSize: 11, color: "var(--color-ink-3)", textDecoration: "none", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    Manage →
+                  </a>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+                  {manualAccounts.map((a) => {
+                    const TYPE_LABEL: Record<string, string> = {
+                      "401k": "401(k)", roth_ira: "Roth IRA", traditional_ira: "Traditional IRA",
+                      hsa: "HSA", brokerage: "Brokerage", pension: "Pension", other_investment: "Investment",
+                    };
+                    return (
+                      <div key={a.id} style={{ background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "16px 18px 14px", boxShadow: "var(--shadow-card)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                          <div>
+                            <div className="serif" style={{ fontSize: 16, color: "var(--color-ink)", marginBottom: 2 }}>{a.name}</div>
+                            <div style={{ fontSize: 10, color: "var(--color-ink-3)", textTransform: "capitalize", letterSpacing: "0.04em" }}>
+                              {TYPE_LABEL[a.account_type] ?? a.account_type}
+                              {a.institution ? ` · ${a.institution}` : ""}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: 9, color: "var(--color-bronze-dark)", background: "rgba(139,106,71,0.1)", padding: "2px 7px", borderRadius: 8, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", flexShrink: 0 }}>
+                            imported
+                          </span>
+                        </div>
+                        <div className="mono" style={{ fontSize: 22, fontWeight: 500, color: "var(--color-ink)" }}>
+                          {a.balance != null
+                            ? new Intl.NumberFormat("en-US", { style: "currency", currency: a.currency, minimumFractionDigits: 2 }).format(a.balance)
+                            : "—"}
+                        </div>
+                        {a.as_of_date && (
+                          <div style={{ fontSize: 10, color: "var(--color-ink-4)", marginTop: 4 }}>
+                            as of {new Date(a.as_of_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* ── Recent activity ─────────────────────────────────── */}
             <section id="activity">
