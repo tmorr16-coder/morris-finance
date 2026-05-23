@@ -79,23 +79,21 @@ export default async function DashboardPage() {
 
   const service = createServiceClient();
 
-  // Fetch PIN from hub preferences (null = no PIN required)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: prefData } = await (service as any)
-    .schema("hub")
-    .from("preferences")
-    .select("finance_pin")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const financePin: string | null = (prefData as any)?.finance_pin ?? null;
-
-  // Fetch items, accounts, recent transactions in parallel
+  // Fetch PIN + plaid data in parallel — PIN was previously a serial await
+  // which added a full round-trip before the main queries could start.
   const [
+    { data: prefData },
     { data: itemRows },
     { data: accountRowsRaw },
     { data: txRowsRaw },
   ] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (service as any)
+      .schema("hub")
+      .from("preferences")
+      .select("finance_pin")
+      .eq("user_id", user.id)
+      .maybeSingle(),
     service
       .schema("finance")
       .from("plaid_items")
@@ -108,13 +106,18 @@ export default async function DashboardPage() {
       .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code, is_hidden")
       .order("type", { ascending: true })
       .order("name", { ascending: true }),
+    // 100 rows is plenty for the initial view; client "Load 50 more" handles the rest.
+    // 500 rows was the bottleneck — 5× more data than needed on every page load.
     service
       .schema("finance")
       .from("transactions")
       .select("id, account_id, date, amount, merchant_name, name, pending, personal_finance_category")
       .order("date", { ascending: false })
-      .limit(500),
+      .limit(100),
   ]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const financePin: string | null = (prefData as any)?.finance_pin ?? null;
 
   const items: ItemRow[] = (itemRows as ItemRow[]) ?? [];
   const allAccounts: AccountRow[] = (accountRowsRaw as AccountRow[]) ?? [];
