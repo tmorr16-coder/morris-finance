@@ -6,10 +6,12 @@ import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SignOutButton from "../_components/SignOutButton";
 import SyncNowButton from "../_components/SyncNowButton";
+import { Suspense } from "react";
 import MonthlyTrendChart, { type MonthPoint } from "./_components/MonthlyTrendChart";
 import CategoryBreakdown, { type CategoryRow } from "./_components/CategoryBreakdown";
 import RecurringCharges, { type RecurringRow } from "./_components/RecurringCharges";
 import TopMerchants, { type MerchantRow } from "./_components/TopMerchants";
+import SpendingRecommendations from "./_components/SpendingRecommendations";
 
 interface TxRow {
   id: string;
@@ -208,9 +210,30 @@ export default async function InsightsPage({
     if (t.amount > 0) m.outflow += t.amount;
     else m.inflow += Math.abs(t.amount);
   }
+  // Group transactions by month for the chart drill-down
+  const txByMonth = new Map<string, TxRow[]>();
+  for (const t of transactions) {
+    const key = monthKey(t.date);
+    if (!txByMonth.has(key)) txByMonth.set(key, []);
+    txByMonth.get(key)!.push(t);
+  }
+
   const monthlyTrend: MonthPoint[] = Array.from(byMonth.entries())
     .sort(([a], [b]) => (a < b ? -1 : 1))
-    .map(([key, v]) => ({ key, label: monthLabel(key), outflow: v.outflow, inflow: v.inflow }))
+    .map(([key, v]) => ({
+      key,
+      label: monthLabel(key),
+      outflow: v.outflow,
+      inflow: v.inflow,
+      txns: (txByMonth.get(key) ?? []).map((t) => ({
+        id: t.id,
+        date: t.date,
+        merchant: t.merchant_name ?? t.name,
+        amount: t.amount,
+        category: categoryFromPFC(t.personal_finance_category),
+        isIncome: t.amount < 0,
+      })).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+    }))
     .slice(-6);
 
   // ── Category breakdown — current month vs previous month ──────────────
@@ -257,11 +280,27 @@ export default async function InsightsPage({
       const curSub = currentDetail.get(cat) ?? new Map();
       const prevSub = prevDetail.get(cat) ?? new Map();
       const subKeys = new Set([...curSub.keys(), ...prevSub.keys()]);
+      // Include actual transactions for each subcategory so the UI can drill down
+      const subTxns = new Map<string, TxRow[]>();
+      for (const t of transactions) {
+        if (t.amount <= 0) continue;
+        if (monthKey(t.date) !== currentMonth) continue;
+        if (categoryFromPFC(t.personal_finance_category) !== cat) continue;
+        const sub = detailedLabel(t.personal_finance_category);
+        if (!subTxns.has(sub)) subTxns.set(sub, []);
+        subTxns.get(sub)!.push(t);
+      }
       const details = Array.from(subKeys)
         .map((s) => ({
           subcategory: s,
           current: curSub.get(s) ?? 0,
           previous: prevSub.get(s) ?? 0,
+          txns: (subTxns.get(s) ?? []).map((t) => ({
+            id: t.id,
+            date: t.date,
+            merchant: t.merchant_name ?? t.name,
+            amount: t.amount,
+          })).sort((a, b) => b.amount - a.amount),
         }))
         .sort((a, b) => b.current - a.current);
       return {
@@ -435,6 +474,22 @@ export default async function InsightsPage({
               <RecurringCharges rows={recurring.slice(0, topN)} />
               <TopMerchants rows={topMerchants} />
             </div>
+
+            {/* AI Recommendations */}
+            <Suspense fallback={
+              <div style={{ background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "20px 24px", boxShadow: "var(--shadow-card)" }}>
+                <h2 className="serif" style={{ fontSize: 20, marginBottom: 10 }}>Recommendations</h2>
+                <p style={{ fontSize: 13, color: "var(--color-ink-4)", textAlign: "center", padding: "20px 0" }}>Analyzing your spending…</p>
+              </div>
+            }>
+              <SpendingRecommendations
+                currentMonthSpend={currentMonthOutflow}
+                prevMonthSpend={prevMonthOutflow}
+                recurringMonthly={totalRecurringMonthly}
+                topCategories={categoryBreakdown.slice(0, 8).map((c) => ({ category: c.category, amount: c.current, prevAmount: c.previous }))}
+                topMerchants={Array.from(merchantsThisMonth.values()).slice(0, 5).map((m) => ({ merchant: m.merchant, total: m.total, count: m.count }))}
+              />
+            </Suspense>
 
           </div>
         )}
