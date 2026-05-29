@@ -47,7 +47,7 @@ function nextWeekISO(): string {
 export default function QuickAddReminder({
   sourceApp,
 }: {
-  sourceApp: "hub" | "health" | "finance";
+  sourceApp: "hub" | "health" | "finance" | "investments" | "student-success";
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
