@@ -383,6 +383,10 @@ export default async function DashboardPage() {
           )}
         </section>
 
+        {/* Accounts shared with this user — shown at top so recipients
+            (who may have no accounts of their own) see them immediately */}
+        <SharedAccountsSection initialShares={sharedWithMe} />
+
         {items.length === 0 ? (
           /* ── Empty state ─────────────────────────────────────────── */
           <div
@@ -594,9 +598,6 @@ export default async function DashboardPage() {
             </section>
           </>
         )}
-
-        {/* Accounts shared with this user by family members */}
-        <SharedAccountsSection initialShares={sharedWithMe} />
 
       </main>
 
