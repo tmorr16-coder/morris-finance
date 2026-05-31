@@ -13,10 +13,15 @@ export default async function SettingsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
 
+  // Use a fresh client for the public.profiles query — avoids schema context
+  // pollution from schema("hub") and schema("finance") calls on the same client.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const publicClient = createServiceClient() as any;
+
   const [prefsResult, itemRowsResult, membersResult] = await Promise.all([
     service.schema("hub").from("preferences").select("finance_pin").eq("user_id", user.id).maybeSingle(),
     service.schema("finance").from("plaid_items").select("id, institution_name").eq("user_id", user.id).order("institution_name", { ascending: true }),
-    service.schema("public").from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
+    publicClient.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
