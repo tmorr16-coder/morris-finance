@@ -90,20 +90,15 @@ export default async function SettingsPage() {
           borderRadius: 10, padding: 4, boxShadow: "var(--shadow-card)",
         }}>
           {[
-            { href: "#pin",     label: "🔒 PIN" },
+            { href: "#pin",        label: "🔒 PIN" },
             { href: "#visibility", label: "👁 Visibility" },
-            { href: "#sharing", label: "🔗 Sharing" },
+            { href: "#sharing",    label: "🔗 Sharing" },
           ].map(({ href, label }) => (
             <a key={href} href={href} style={{
               flex: 1, padding: "8px 12px", borderRadius: 7,
               textAlign: "center", fontSize: 13, fontWeight: 600,
               color: "var(--color-ink-2)", textDecoration: "none",
-              background: "transparent",
-              transition: "background 120ms",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-paper-deep, #E8E0D0)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-            >
+            }}>
               {label}
             </a>
           ))}
