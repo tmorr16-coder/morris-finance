@@ -162,15 +162,18 @@ export default async function DashboardPage() {
     const svc = service as any;
     const sharedAccountIds = rawSharedShares.map((s) => s.account_id);
     const ownerIds = [...new Set(rawSharedShares.map((s) => s.owner_user_id))];
-    const [{ data: sharedAcctRows }, { data: ownerProfiles }, { data: institutionRows }] = await Promise.all([
+    // Fetch accounts + profiles in parallel, then institutions (needs item_ids from accounts)
+    const [{ data: sharedAcctRows }, { data: ownerProfiles }] = await Promise.all([
       svc.schema("finance").from("accounts")
         .select("id, item_id, name, type, subtype, mask, current_balance")
         .in("id", sharedAccountIds),
       svc.from("profiles").select("id, full_name, email, avatar_url").in("id", ownerIds),
-      svc.schema("finance").from("plaid_items").select("id, institution_name").in("id",
-        (sharedAcctRows ?? []).map((a: any) => a.item_id)
-      ),
     ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itemIds = ((sharedAcctRows ?? []) as any[]).map((a) => a.item_id);
+    const { data: institutionRows } = itemIds.length > 0
+      ? await svc.schema("finance").from("plaid_items").select("id, institution_name").in("id", itemIds)
+      : { data: [] };
     const acctMap = new Map((sharedAcctRows ?? []).map((a: any) => [a.id, a]));
     const ownerMap = new Map((ownerProfiles ?? []).map((p: any) => [p.id, p]));
     const instMap = new Map((institutionRows ?? []).map((i: any) => [i.id, i.institution_name]));
