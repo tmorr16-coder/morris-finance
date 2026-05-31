@@ -81,13 +81,11 @@ export default async function DashboardPage() {
 
   const service = createServiceClient();
 
-  // Fetch PIN + plaid data in parallel — PIN was previously a serial await
-  // which added a full round-trip before the main queries could start.
+  // Round 1: fetch user-scoped data that doesn't depend on other results.
+  // accounts and transactions are fetched in round 2 once we know itemIds.
   const [
     { data: prefData },
     { data: itemRows },
-    { data: accountRowsRaw },
-    { data: txRowsRaw },
     { data: manualRows },
     { data: sharedWithMeRaw },
   ] = await Promise.all([
@@ -106,18 +104,6 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: true }),
     service
       .schema("finance")
-      .from("accounts")
-      .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code, is_hidden")
-      .order("type", { ascending: true })
-      .order("name", { ascending: true }),
-    service
-      .schema("finance")
-      .from("transactions")
-      .select("id, account_id, date, amount, merchant_name, name, pending, personal_finance_category")
-      .order("date", { ascending: false })
-      .limit(100),
-    service
-      .schema("finance")
       .from("manual_accounts")
       .select("id, name, institution, account_type, balance, as_of_date, currency, holdings, source")
       .eq("user_id", user.id)
@@ -129,6 +115,33 @@ export default async function DashboardPage() {
       .select("id, account_id, owner_user_id, include_in_portfolio, created_at")
       .eq("grantee_user_id", user.id),
   ]);
+
+  // Round 2: accounts scoped to this user's plaid items only.
+  // Without this filter the service-role client (bypasses RLS) would return
+  // every account from every user — a data-isolation bug when multiple
+  // platform members log in.
+  const userItemIds = ((itemRows ?? []) as { id: string }[]).map((r) => r.id);
+  const { data: accountRowsRaw } = userItemIds.length > 0
+    ? await service
+        .schema("finance")
+        .from("accounts")
+        .select("id, item_id, name, official_name, type, subtype, mask, current_balance, iso_currency_code, is_hidden")
+        .in("item_id", userItemIds)
+        .order("type", { ascending: true })
+        .order("name", { ascending: true })
+    : { data: [] };
+
+  // Round 3: transactions filtered to this user's account IDs.
+  const userAccountIds = ((accountRowsRaw ?? []) as { id: string }[]).map((r) => r.id);
+  const { data: txRowsRaw } = userAccountIds.length > 0
+    ? await service
+        .schema("finance")
+        .from("transactions")
+        .select("id, account_id, date, amount, merchant_name, name, pending, personal_finance_category")
+        .in("account_id", userAccountIds)
+        .order("date", { ascending: false })
+        .limit(100)
+    : { data: [] };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const financePin: string | null = (prefData as any)?.finance_pin ?? null;
