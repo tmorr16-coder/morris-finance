@@ -146,7 +146,7 @@ export default function SharingSection({ accounts, members, existingShares, item
                 return (
                   <div style={{ borderTop: "1px solid var(--color-rule-soft)", padding: "14px 18px", background: "var(--color-bg-deep, #ECE6D7)" }}>
                     <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginBottom: 12 }}>
-                      Choose a family member to share <strong>{account.name}</strong> with:
+                      Share <strong>{account.name}</strong> with a platform member:
                     </div>
 
                     {available.length === 0 ? (

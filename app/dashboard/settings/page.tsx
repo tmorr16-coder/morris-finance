@@ -124,7 +124,7 @@ export default async function SettingsPage() {
             🔗 Account sharing
           </h2>
           <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
-            Share individual account balances with a spouse or child. They can choose whether to include shared accounts in their own portfolio total. You can remove access at any time.
+            Share individual account balances with anyone on the platform. They can choose whether to include shared accounts in their own portfolio total. You can remove access at any time.
           </p>
           <SharingSection
             accounts={accounts}
