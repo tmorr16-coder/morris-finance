@@ -6,45 +6,60 @@ import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SettingsClient, { type AccountRow } from "./_components/SettingsClient";
 import PinSettings from "./_components/PinSettings";
+import SharingSection from "./_components/SharingSection";
+import type { AccountShare, PlatformMember } from "./share-actions";
 
 export default async function SettingsPage() {
   const { user, menuUser } = await requireFinanceAccess();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
 
-  const { data: prefs } = await service
-    .schema("hub")
-    .from("preferences")
-    .select("finance_pin")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentPin: string | null = (prefs as any)?.finance_pin ?? null;
-
-  const { data: itemRows } = await service
-    .schema("finance")
-    .from("plaid_items")
-    .select("id, institution_name")
-    .eq("user_id", user.id)
-    .order("institution_name", { ascending: true });
+  const [prefsResult, itemRowsResult, membersResult] = await Promise.all([
+    service.schema("hub").from("preferences").select("finance_pin").eq("user_id", user.id).maybeSingle(),
+    service.schema("finance").from("plaid_items").select("id, institution_name").eq("user_id", user.id).order("institution_name", { ascending: true }),
+    service.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("full_name", { ascending: true }),
+  ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const itemIds = ((itemRows as any[]) ?? []).map((r) => r.id);
+  const currentPin: string | null = (prefsResult.data as any)?.finance_pin ?? null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const itemIds = ((itemRowsResult.data as any[]) ?? []).map((r) => r.id);
+  const members: PlatformMember[] = (membersResult.data ?? []) as PlatformMember[];
 
   let accounts: AccountRow[] = [];
+  let existingShares: AccountShare[] = [];
+
   if (itemIds.length > 0) {
-    const { data: acctRows } = await service
-      .schema("finance")
-      .from("accounts")
-      .select("id, item_id, name, official_name, type, subtype, mask, current_balance, is_hidden")
-      .in("item_id", itemIds)
-      .order("type", { ascending: true })
-      .order("name", { ascending: true });
-    accounts = (acctRows ?? []) as AccountRow[];
+    const [acctResult, sharesResult] = await Promise.all([
+      service.schema("finance").from("accounts")
+        .select("id, item_id, name, official_name, type, subtype, mask, current_balance, is_hidden")
+        .in("item_id", itemIds)
+        .order("type", { ascending: true })
+        .order("name", { ascending: true }),
+      service.schema("finance").from("account_shares")
+        .select("id, account_id, grantee_user_id, include_in_portfolio, created_at")
+        .eq("owner_user_id", user.id),
+    ]);
+
+    accounts = (acctResult.data ?? []) as AccountRow[];
+
+    // Attach grantee profile info to each share
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawShares = (sharesResult.data ?? []) as any[];
+    const granteeIds = [...new Set(rawShares.map((s) => s.grantee_user_id))];
+    let granteeProfiles: Record<string, PlatformMember> = {};
+    if (granteeIds.length > 0) {
+      const { data: profiles } = await service.from("profiles").select("id, full_name, email, avatar_url").in("id", granteeIds);
+      for (const p of profiles ?? []) granteeProfiles[p.id] = p;
+    }
+    existingShares = rawShares.map((s) => ({
+      ...s,
+      grantee: granteeProfiles[s.grantee_user_id] ?? null,
+    })) as AccountShare[];
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const itemMap = new Map<string, string>(((itemRows as any[]) ?? []).map((r) => [r.id, r.institution_name]));
+  const itemMap = new Map<string, string>(((itemRowsResult.data as any[]) ?? []).map((r) => [r.id, r.institution_name]));
 
   return (
     <div>
@@ -60,10 +75,7 @@ export default async function SettingsPage() {
               finance · settings
             </span>
           </div>
-          <Link
-            href="/dashboard"
-            style={{ fontSize: 12, color: "var(--color-ink-3)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--color-rule)" }}
-          >
+          <Link href="/dashboard" style={{ fontSize: 12, color: "var(--color-ink-3)", textDecoration: "none", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--color-rule)" }}>
             ← Dashboard
           </Link>
         </div>
@@ -73,16 +85,37 @@ export default async function SettingsPage() {
         <section style={{ marginBottom: 32 }}>
           <h1 className="serif" style={{ fontSize: 32, marginBottom: 8 }}>Settings</h1>
           <p style={{ fontSize: 14, color: "var(--color-ink-3)", lineHeight: 1.55 }}>
-            Toggle accounts off to exclude them from your dashboard, insights, and recurring detection.
-            They stay connected to Plaid — sync continues — but they won&apos;t show in totals.
+            Manage account visibility, your PIN, and sharing with family members.
           </p>
         </section>
 
+        {/* PIN */}
         <div style={{ marginBottom: 32, background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "22px 26px", boxShadow: "var(--shadow-card)" }}>
           <PinSettings currentPin={currentPin} />
         </div>
 
-        <SettingsClient initialAccounts={accounts} itemNameById={Object.fromEntries(itemMap)} />
+        {/* Account visibility */}
+        <section style={{ marginBottom: 40 }}>
+          <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>Account visibility</h2>
+          <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
+            Toggle accounts off to exclude them from your dashboard totals and insights. Sync continues in the background.
+          </p>
+          <SettingsClient initialAccounts={accounts} itemNameById={Object.fromEntries(itemMap)} />
+        </section>
+
+        {/* Account sharing */}
+        <section id="sharing">
+          <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>Account sharing</h2>
+          <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
+            Share individual account balances with a spouse or child. They can choose whether to include shared accounts in their own portfolio total. You can remove access at any time.
+          </p>
+          <SharingSection
+            accounts={accounts}
+            members={members}
+            existingShares={existingShares}
+            itemNameById={Object.fromEntries(itemMap)}
+          />
+        </section>
       </main>
     </div>
   );

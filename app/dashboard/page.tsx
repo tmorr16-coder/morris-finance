@@ -10,6 +10,8 @@ import SyncNowButton from "./_components/SyncNowButton";
 import FinanceChat from "./_components/FinanceChat";
 import RecentActivityClient from "./_components/RecentActivityClient";
 import PinGate from "./_components/PinGate";
+import SharedAccountsSection from "./_components/SharedAccountsSection";
+import type { SharedWithMe } from "./settings/share-actions";
 
 interface AccountRow {
   id: string;
@@ -87,6 +89,7 @@ export default async function DashboardPage() {
     { data: accountRowsRaw },
     { data: txRowsRaw },
     { data: manualRows },
+    { data: sharedWithMeRaw },
   ] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (service as any)
@@ -119,6 +122,12 @@ export default async function DashboardPage() {
       .select("id, name, institution, account_type, balance, as_of_date, currency, holdings, source")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (service as any)
+      .schema("finance")
+      .from("account_shares")
+      .select("id, account_id, owner_user_id, include_in_portfolio, created_at")
+      .eq("grantee_user_id", user.id),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,6 +152,48 @@ export default async function DashboardPage() {
     source: string;
   }
   const manualAccounts: ManualAccountRow[] = (manualRows as ManualAccountRow[]) ?? [];
+
+  // ── Shared accounts (where this user is the grantee) ─────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawSharedShares: any[] = (sharedWithMeRaw as any[]) ?? [];
+  let sharedWithMe: SharedWithMe[] = [];
+  if (rawSharedShares.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = service as any;
+    const sharedAccountIds = rawSharedShares.map((s) => s.account_id);
+    const ownerIds = [...new Set(rawSharedShares.map((s) => s.owner_user_id))];
+    const [{ data: sharedAcctRows }, { data: ownerProfiles }, { data: institutionRows }] = await Promise.all([
+      svc.schema("finance").from("accounts")
+        .select("id, item_id, name, type, subtype, mask, current_balance")
+        .in("id", sharedAccountIds),
+      svc.from("profiles").select("id, full_name, email, avatar_url").in("id", ownerIds),
+      svc.schema("finance").from("plaid_items").select("id, institution_name").in("id",
+        (sharedAcctRows ?? []).map((a: any) => a.item_id)
+      ),
+    ]);
+    const acctMap = new Map((sharedAcctRows ?? []).map((a: any) => [a.id, a]));
+    const ownerMap = new Map((ownerProfiles ?? []).map((p: any) => [p.id, p]));
+    const instMap = new Map((institutionRows ?? []).map((i: any) => [i.id, i.institution_name]));
+    sharedWithMe = rawSharedShares.map((s: any) => {
+      const acct = acctMap.get(s.account_id) as any;
+      return {
+        id: s.id,
+        account_id: s.account_id,
+        owner_user_id: s.owner_user_id,
+        include_in_portfolio: s.include_in_portfolio,
+        created_at: s.created_at,
+        account: acct ? { ...acct, institution_name: instMap.get(acct.item_id) ?? null } : null,
+        owner: ownerMap.get(s.owner_user_id) ?? null,
+      } as SharedWithMe;
+    });
+  }
+  // Add shared accounts where include_in_portfolio=true to net position
+  const sharedPortfolioTotal = sharedWithMe
+    .filter((s) => s.include_in_portfolio && s.account)
+    .reduce((sum, s) => {
+      const bal = s.account!.current_balance ?? 0;
+      return sum + (s.account!.type === "credit" || s.account!.type === "loan" ? -bal : bal);
+    }, 0);
 
   const name = user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email ?? "there";
   const firstName = name.split(" ")[0];
@@ -170,7 +221,7 @@ export default async function DashboardPage() {
   const netPosition = accounts.reduce((sum, a) => {
     const bal = a.current_balance ?? 0;
     return sum + (a.type === "credit" || a.type === "loan" ? -bal : bal);
-  }, 0) + manualTotal;
+  }, 0) + manualTotal + sharedPortfolioTotal;
   const netFmt = fmtMoneyLarge(netPosition);
 
   const lastSyncAcrossItems = items.reduce<string | null>((latest, it) => {
@@ -515,6 +566,9 @@ export default async function DashboardPage() {
             </section>
           </>
         )}
+
+        {/* Accounts shared with this user by family members */}
+        <SharedAccountsSection initialShares={sharedWithMe} />
 
       </main>
 
