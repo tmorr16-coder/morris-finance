@@ -81,21 +81,41 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 880, margin: "0 auto", padding: "32px 28px 80px" }}>
-        <section style={{ marginBottom: 32 }}>
-          <h1 className="serif" style={{ fontSize: 32, marginBottom: 8 }}>Settings</h1>
-          <p style={{ fontSize: 14, color: "var(--color-ink-3)", lineHeight: 1.55 }}>
-            Manage account visibility, your PIN, and sharing with family members.
-          </p>
-        </section>
+      <main style={{ maxWidth: 880, margin: "0 auto", padding: "24px 28px 80px" }}>
+
+        {/* Section jump nav */}
+        <div style={{
+          display: "flex", gap: 4, marginBottom: 32,
+          background: "var(--color-paper-card)", border: "1px solid var(--color-rule)",
+          borderRadius: 10, padding: 4, boxShadow: "var(--shadow-card)",
+        }}>
+          {[
+            { href: "#pin",     label: "🔒 PIN" },
+            { href: "#visibility", label: "👁 Visibility" },
+            { href: "#sharing", label: "🔗 Sharing" },
+          ].map(({ href, label }) => (
+            <a key={href} href={href} style={{
+              flex: 1, padding: "8px 12px", borderRadius: 7,
+              textAlign: "center", fontSize: 13, fontWeight: 600,
+              color: "var(--color-ink-2)", textDecoration: "none",
+              background: "transparent",
+              transition: "background 120ms",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-paper-deep, #E8E0D0)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
 
         {/* PIN */}
-        <div style={{ marginBottom: 32, background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "22px 26px", boxShadow: "var(--shadow-card)" }}>
+        <div id="pin" style={{ marginBottom: 40, background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "22px 26px", boxShadow: "var(--shadow-card)" }}>
           <PinSettings currentPin={currentPin} />
         </div>
 
         {/* Account visibility */}
-        <section style={{ marginBottom: 40 }}>
+        <section id="visibility" style={{ marginBottom: 40 }}>
           <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>Account visibility</h2>
           <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
             Toggle accounts off to exclude them from your dashboard totals and insights. Sync continues in the background.
@@ -105,7 +125,9 @@ export default async function SettingsPage() {
 
         {/* Account sharing */}
         <section id="sharing">
-          <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>Account sharing</h2>
+          <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>
+            🔗 Account sharing
+          </h2>
           <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
             Share individual account balances with a spouse or child. They can choose whether to include shared accounts in their own portfolio total. You can remove access at any time.
           </p>
