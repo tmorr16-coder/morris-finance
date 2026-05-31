@@ -6,7 +6,6 @@ import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SettingsClient, { type AccountRow } from "./_components/SettingsClient";
 import PinSettings from "./_components/PinSettings";
-import SharingSection from "./_components/SharingSection";
 import type { AccountShare, PlatformMember } from "./share-actions";
 
 export default async function SettingsPage() {
@@ -91,8 +90,7 @@ export default async function SettingsPage() {
         }}>
           {[
             { href: "#pin",        label: "🔒 PIN" },
-            { href: "#visibility", label: "👁 Visibility" },
-            { href: "#sharing",    label: "🔗 Sharing" },
+            { href: "#visibility", label: "👁 Accounts" },
           ].map(({ href, label }) => (
             <a key={href} href={href} style={{
               flex: 1, padding: "8px 12px", borderRadius: 7,
@@ -115,22 +113,11 @@ export default async function SettingsPage() {
           <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
             Toggle accounts off to exclude them from your dashboard totals and insights. Sync continues in the background.
           </p>
-          <SettingsClient initialAccounts={accounts} itemNameById={Object.fromEntries(itemMap)} />
-        </section>
-
-        {/* Account sharing */}
-        <section id="sharing">
-          <h2 className="serif" style={{ fontSize: 22, marginBottom: 6 }}>
-            🔗 Account sharing
-          </h2>
-          <p style={{ fontSize: 13, color: "var(--color-ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
-            Share individual account balances with anyone on the platform. They can choose whether to include shared accounts in their own portfolio total. You can remove access at any time.
-          </p>
-          <SharingSection
-            accounts={accounts}
-            members={members}
-            existingShares={existingShares}
+          <SettingsClient
+            initialAccounts={accounts}
             itemNameById={Object.fromEntries(itemMap)}
+            members={members}
+            initialShares={existingShares}
           />
         </section>
       </main>
