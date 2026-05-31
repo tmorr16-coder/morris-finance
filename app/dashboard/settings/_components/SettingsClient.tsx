@@ -174,8 +174,8 @@ export default function SettingsClient({
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        {/* Share button — only show if not hidden and members exist */}
-                        {!a.is_hidden && members.length > 0 && (
+                        {/* Share button — always show for visible accounts */}
+                        {!a.is_hidden && (
                           <button
                             onClick={() => openPicker(a.id)}
                             disabled={isPending}
@@ -225,7 +225,11 @@ export default function SettingsClient({
                           Share <strong>{a.name}</strong> with:
                         </div>
 
-                        {available.length === 0 ? (
+                        {members.length === 0 ? (
+                          <div style={{ fontSize: 12, color: "var(--color-ink-4)" }}>
+                            No other platform members found. Invite people via the Hub admin panel.
+                          </div>
+                        ) : available.length === 0 ? (
                           <div style={{ fontSize: 12, color: "var(--color-ink-4)", fontStyle: "italic" }}>
                             All platform members already have access to this account.
                           </div>
