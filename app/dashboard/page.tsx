@@ -174,13 +174,15 @@ export default async function DashboardPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const svc = service as any;
     const sharedAccountIds = rawSharedShares.map((s) => s.account_id);
-    const ownerIds = [...new Set(rawSharedShares.map((s) => s.owner_user_id))];
-    // Fetch accounts + profiles in parallel, then institutions (needs item_ids from accounts)
-    const [{ data: sharedAcctRows }, { data: ownerProfiles }] = await Promise.all([
+    const ownerIds = new Set(rawSharedShares.map((s) => s.owner_user_id));
+    // Fetch shared accounts + the full auth user list in parallel.
+    // We use auth.admin.listUsers() for owner names because public.profiles
+    // is RLS-blocked to the service role.
+    const [{ data: sharedAcctRows }, usersResult] = await Promise.all([
       svc.schema("finance").from("accounts")
         .select("id, item_id, name, type, subtype, mask, current_balance")
         .in("id", sharedAccountIds),
-      svc.schema("public").from("profiles").select("id, full_name, email, avatar_url").in("id", ownerIds),
+      svc.auth.admin.listUsers({ perPage: 200 }),
     ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const itemIds = ((sharedAcctRows ?? []) as any[]).map((a) => a.item_id);
@@ -188,7 +190,17 @@ export default async function DashboardPage() {
       ? await svc.schema("finance").from("plaid_items").select("id, institution_name").in("id", itemIds)
       : { data: [] };
     const acctMap = new Map((sharedAcctRows ?? []).map((a: any) => [a.id, a]));
-    const ownerMap = new Map((ownerProfiles ?? []).map((p: any) => [p.id, p]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ownerMap = new Map(
+      ((usersResult?.data?.users ?? []) as any[])
+        .filter((u) => ownerIds.has(u.id))
+        .map((u) => [u.id, {
+          id: u.id,
+          full_name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? null,
+          email: u.email ?? null,
+          avatar_url: u.user_metadata?.avatar_url ?? u.user_metadata?.picture ?? null,
+        }])
+    );
     const instMap = new Map((institutionRows ?? []).map((i: any) => [i.id, i.institution_name]));
     sharedWithMe = rawSharedShares.map((s: any) => {
       const acct = acctMap.get(s.account_id) as any;

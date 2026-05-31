@@ -55,18 +55,14 @@ export default async function SettingsPage() {
 
     accounts = (acctResult.data ?? []) as AccountRow[];
 
-    // Attach grantee profile info to each share
+    // Attach grantee info to each share — reuse the members list (already
+    // fetched via auth.admin.listUsers, which bypasses the profiles RLS block).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawShares = (sharesResult.data ?? []) as any[];
-    const granteeIds = [...new Set(rawShares.map((s) => s.grantee_user_id))];
-    let granteeProfiles: Record<string, PlatformMember> = {};
-    if (granteeIds.length > 0) {
-      const { data: profiles } = await service.schema("public").from("profiles").select("id, full_name, email, avatar_url").in("id", granteeIds);
-      for (const p of profiles ?? []) granteeProfiles[p.id] = p;
-    }
+    const memberById = new Map(members.map((m) => [m.id, m]));
     existingShares = rawShares.map((s) => ({
       ...s,
-      grantee: granteeProfiles[s.grantee_user_id] ?? null,
+      grantee: memberById.get(s.grantee_user_id) ?? null,
     })) as AccountShare[];
   }
 
