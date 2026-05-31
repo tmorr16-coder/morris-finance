@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { createServiceClient, createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SettingsClient, { type AccountRow } from "./_components/SettingsClient";
@@ -13,21 +13,30 @@ export default async function SettingsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
 
-  // Use the user's authenticated SSR client for profiles — service role key
-  // may be blocked by RLS on public.profiles; the user's own session is not.
-  const userClient = await createClient();
-
-  const [prefsResult, itemRowsResult, membersResult] = await Promise.all([
+  const [prefsResult, itemRowsResult] = await Promise.all([
     service.schema("hub").from("preferences").select("finance_pin").eq("user_id", user.id).maybeSingle(),
     service.schema("finance").from("plaid_items").select("id, institution_name").eq("user_id", user.id).order("institution_name", { ascending: true }),
-    userClient.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
   ]);
+
+  // Use auth.admin.listUsers() — bypasses PostgREST/RLS entirely, uses
+  // the service role key directly against the Supabase Auth API.
+  const { data: { users: allUsers } } = await service.auth.admin.listUsers({ perPage: 200 });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const currentPin: string | null = (prefsResult.data as any)?.finance_pin ?? null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const itemIds = ((itemRowsResult.data as any[]) ?? []).map((r) => r.id);
-  const members: PlatformMember[] = (membersResult.data ?? []) as PlatformMember[];
+
+  // Build member list from auth users — excludes current user, sorted by email
+  const members: PlatformMember[] = (allUsers ?? [])
+    .filter((u: any) => u.id !== user.id)
+    .map((u: any) => ({
+      id: u.id,
+      full_name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? null,
+      email: u.email ?? null,
+      avatar_url: u.user_metadata?.avatar_url ?? u.user_metadata?.picture ?? null,
+    }))
+    .sort((a: any, b: any) => (a.email ?? "").localeCompare(b.email ?? ""));
 
   let accounts: AccountRow[] = [];
   let existingShares: AccountShare[] = [];
