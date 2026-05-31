@@ -141,46 +141,79 @@ export default function SharingSection({ accounts, members, existingShares, item
               </div>
 
               {/* Member picker */}
-              {isPicker && (
-                <div style={{ borderTop: "1px solid var(--color-rule-soft)", padding: "12px 18px", background: "var(--color-paper-deep, var(--color-paper))" }}>
-                  <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginBottom: 8 }}>
-                    Share this account's balance with a family member. They can optionally include it in their portfolio total.
+              {isPicker && (() => {
+                const available = members.filter((m) => !acctShares.some((s) => s.grantee_user_id === m.id));
+                return (
+                  <div style={{ borderTop: "1px solid var(--color-rule-soft)", padding: "14px 18px", background: "var(--color-bg-deep, #ECE6D7)" }}>
+                    <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginBottom: 12 }}>
+                      Choose a family member to share <strong>{account.name}</strong> with:
+                    </div>
+
+                    {available.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "var(--color-ink-4)", fontStyle: "italic" }}>
+                        All platform members already have access to this account.
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {available.map((m) => {
+                          const label = m.full_name ?? m.email ?? "Family member";
+                          const initial = label.slice(0, 1).toUpperCase();
+                          const isSelected = pickerMemberId === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setPickerMemberId(isSelected ? "" : m.id)}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 10,
+                                padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                                border: `1.5px solid ${isSelected ? "var(--color-bronze, #8B6A47)" : "var(--color-rule)"}`,
+                                background: isSelected ? "rgba(139,106,71,0.08)" : "var(--color-bg-card)",
+                                textAlign: "left", width: "100%", fontFamily: "inherit",
+                              }}
+                            >
+                              <div style={{
+                                width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                                background: isSelected ? "var(--color-bronze, #8B6A47)" : "var(--color-rule)",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 12, fontWeight: 700,
+                                color: isSelected ? "#fff" : "var(--color-ink-3)",
+                              }}>
+                                {initial}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-ink)" }}>
+                                  {m.full_name ?? "Family member"}
+                                </div>
+                                <div style={{ fontSize: 11, color: "var(--color-ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {m.email}
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <span style={{ fontSize: 16, color: "var(--color-bronze, #8B6A47)", flexShrink: 0 }}>✓</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {pickerMemberId && (
+                      <button
+                        onClick={share}
+                        disabled={isPending}
+                        style={{
+                          marginTop: 12, width: "100%", padding: "10px", borderRadius: 8,
+                          border: "none", background: "var(--color-bronze, #8B6A47)",
+                          color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {isPending ? "Sharing…" : `Share with ${members.find((m) => m.id === pickerMemberId)?.full_name ?? members.find((m) => m.id === pickerMemberId)?.email ?? "member"}`}
+                      </button>
+                    )}
                   </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <select
-                      value={pickerMemberId}
-                      onChange={(e) => setPickerMemberId(e.target.value)}
-                      style={{
-                        flex: 1, minWidth: 160, padding: "7px 10px", borderRadius: 7,
-                        border: "1px solid var(--color-rule)", fontSize: 13,
-                        background: "var(--color-paper-card)", color: "var(--color-ink)",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <option value="">Select family member…</option>
-                      {members
-                        .filter((m) => !acctShares.some((s) => s.grantee_user_id === m.id))
-                        .map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.full_name ?? m.email ?? m.id}
-                          </option>
-                        ))}
-                    </select>
-                    <button
-                      onClick={share}
-                      disabled={!pickerMemberId || isPending}
-                      style={{
-                        padding: "7px 18px", borderRadius: 7, border: "none",
-                        background: pickerMemberId ? "var(--color-bronze)" : "var(--color-rule)",
-                        color: pickerMemberId ? "#fff" : "var(--color-ink-4)",
-                        fontSize: 13, fontWeight: 600, cursor: pickerMemberId ? "pointer" : "default",
-                      }}
-                    >
-                      {isPending ? "Sharing…" : "Share"}
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Existing shares for this account */}
               {acctShares.length > 0 && (
