@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient, createClient } from "@/lib/supabase/server";
 import { requireFinanceAccess } from "@/lib/access";
 import PlatformMenu from "@/components/PlatformMenu";
 import SettingsClient, { type AccountRow } from "./_components/SettingsClient";
@@ -13,15 +13,14 @@ export default async function SettingsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
 
-  // Use a fresh client for the public.profiles query — avoids schema context
-  // pollution from schema("hub") and schema("finance") calls on the same client.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const publicClient = createServiceClient() as any;
+  // Use the user's authenticated SSR client for profiles — service role key
+  // may be blocked by RLS on public.profiles; the user's own session is not.
+  const userClient = await createClient();
 
   const [prefsResult, itemRowsResult, membersResult] = await Promise.all([
     service.schema("hub").from("preferences").select("finance_pin").eq("user_id", user.id).maybeSingle(),
     service.schema("finance").from("plaid_items").select("id, institution_name").eq("user_id", user.id).order("institution_name", { ascending: true }),
-    publicClient.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
+    userClient.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
