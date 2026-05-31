@@ -143,10 +143,15 @@ export default function SharingSection({ accounts, members, existingShares, item
               {/* Member picker */}
               {isPicker && (() => {
                 const available = members.filter((m) => !acctShares.some((s) => s.grantee_user_id === m.id));
+                const selectedMember = members.find((m) => m.id === pickerMemberId);
                 return (
-                  <div style={{ borderTop: "1px solid var(--color-rule-soft)", padding: "14px 18px", background: "var(--color-bg-deep, #ECE6D7)" }}>
-                    <div style={{ fontSize: 11, color: "var(--color-ink-3)", marginBottom: 12 }}>
-                      Share <strong>{account.name}</strong> with a platform member:
+                  <div style={{
+                    borderTop: "2px solid var(--color-bronze)",
+                    padding: "16px 18px",
+                    background: "var(--color-paper-deep)",
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-ink-2)", marginBottom: 12 }}>
+                      Share <strong>{account.name}</strong> with:
                     </div>
 
                     {available.length === 0 ? (
@@ -154,42 +159,51 @@ export default function SharingSection({ accounts, members, existingShares, item
                         All platform members already have access to this account.
                       </div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {available.map((m) => {
-                          const label = m.full_name ?? m.email ?? "Family member";
-                          const initial = label.slice(0, 1).toUpperCase();
+                          const displayName = m.full_name ?? m.email ?? m.id;
+                          const initial = displayName.slice(0, 1).toUpperCase();
                           const isSelected = pickerMemberId === m.id;
                           return (
                             <button
                               key={m.id}
                               onClick={() => setPickerMemberId(isSelected ? "" : m.id)}
                               style={{
-                                display: "flex", alignItems: "center", gap: 10,
-                                padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                                border: `1.5px solid ${isSelected ? "var(--color-bronze, #8B6A47)" : "var(--color-rule)"}`,
-                                background: isSelected ? "rgba(139,106,71,0.08)" : "var(--color-bg-card)",
+                                display: "flex", alignItems: "center", gap: 12,
+                                padding: "12px 14px", borderRadius: 8, cursor: "pointer",
+                                border: `2px solid ${isSelected ? "var(--color-bronze)" : "var(--color-rule)"}`,
+                                background: isSelected ? "rgba(139,106,71,0.1)" : "var(--color-paper-card)",
                                 textAlign: "left", width: "100%", fontFamily: "inherit",
+                                transition: "border-color 120ms",
                               }}
                             >
                               <div style={{
-                                width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                                background: isSelected ? "var(--color-bronze, #8B6A47)" : "var(--color-rule)",
+                                width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                                background: isSelected ? "var(--color-bronze)" : "var(--color-paper-deep)",
+                                border: `1px solid ${isSelected ? "var(--color-bronze)" : "var(--color-rule)"}`,
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 12, fontWeight: 700,
-                                color: isSelected ? "#fff" : "var(--color-ink-3)",
+                                fontSize: 14, fontWeight: 700,
+                                color: isSelected ? "#fff" : "var(--color-ink-2)",
                               }}>
                                 {initial}
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-ink)" }}>
-                                  {m.full_name ?? "Family member"}
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-ink)" }}>
+                                  {displayName}
                                 </div>
-                                <div style={{ fontSize: 11, color: "var(--color-ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {m.email}
-                                </div>
+                                {m.full_name && m.email && (
+                                  <div style={{ fontSize: 11, color: "var(--color-ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {m.email}
+                                  </div>
+                                )}
                               </div>
                               {isSelected && (
-                                <span style={{ fontSize: 16, color: "var(--color-bronze, #8B6A47)", flexShrink: 0 }}>✓</span>
+                                <div style={{
+                                  width: 22, height: 22, borderRadius: "50%",
+                                  background: "var(--color-bronze)", flexShrink: 0,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  color: "#fff", fontSize: 13, fontWeight: 700,
+                                }}>✓</div>
                               )}
                             </button>
                           );
@@ -202,13 +216,13 @@ export default function SharingSection({ accounts, members, existingShares, item
                         onClick={share}
                         disabled={isPending}
                         style={{
-                          marginTop: 12, width: "100%", padding: "10px", borderRadius: 8,
-                          border: "none", background: "var(--color-bronze, #8B6A47)",
-                          color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          marginTop: 14, width: "100%", padding: "12px", borderRadius: 8,
+                          border: "none", background: "var(--color-bronze)",
+                          color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
                           fontFamily: "inherit",
                         }}
                       >
-                        {isPending ? "Sharing…" : `Share with ${members.find((m) => m.id === pickerMemberId)?.full_name ?? members.find((m) => m.id === pickerMemberId)?.email ?? "member"}`}
+                        {isPending ? "Sharing…" : `Share with ${selectedMember?.full_name ?? selectedMember?.email ?? "member"}`}
                       </button>
                     )}
                   </div>
