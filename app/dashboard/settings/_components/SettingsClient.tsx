@@ -43,9 +43,10 @@ export default function SettingsClient({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Which account's share picker is open
+  // Which account's share picker is open (null = none, "all" = share-all picker)
   const [pickerAccountId, setPickerAccountId] = useState<string | null>(null);
   const [pickerMemberId, setPickerMemberId] = useState<string>("");
+  const [shareAllPending, setShareAllPending] = useState(false);
 
   const visibleCount = accounts.filter((a) => !a.is_hidden).length;
   const hiddenCount = accounts.length - visibleCount;
@@ -105,6 +106,35 @@ export default function SettingsClient({
     });
   }
 
+  // Share ALL visible accounts with a single person at once
+  async function doShareAll(memberId: string) {
+    if (!memberId) return;
+    setShareAllPending(true);
+    setError(null);
+    const visibleAccounts = accounts.filter((a) => !a.is_hidden);
+    const alreadyShared = new Set(shares.filter((s) => s.grantee_user_id === memberId).map((s) => s.account_id));
+    const toShare = visibleAccounts.filter((a) => !alreadyShared.has(a.id));
+    const member = members.find((m) => m.id === memberId);
+    const newShares: AccountShare[] = [];
+    for (const acct of toShare) {
+      const res = await shareAccount(acct.id, memberId);
+      if (!res.error) {
+        newShares.push({
+          id: `tmp-${acct.id}-${Date.now()}`,
+          account_id: acct.id,
+          grantee_user_id: memberId,
+          include_in_portfolio: false,
+          created_at: new Date().toISOString(),
+          grantee: member ?? null,
+        });
+      }
+    }
+    setShares((prev) => [...prev, ...newShares]);
+    setPickerAccountId(null);
+    setPickerMemberId("");
+    setShareAllPending(false);
+  }
+
   // Group by institution
   const byInstitution = new Map<string, AccountRow[]>();
   for (const a of accounts) {
@@ -122,13 +152,104 @@ export default function SettingsClient({
 
   return (
     <>
-      <section style={{ marginBottom: 24, padding: "12px 16px", background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {/* Stats + Share all */}
+      <section style={{ marginBottom: 16, padding: "12px 16px", background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 12, color: "var(--color-ink-3)" }}>
           <span className="mono" style={{ color: "var(--color-ink)" }}>{visibleCount}</span> visible ·{" "}
           <span className="mono" style={{ color: "var(--color-ink)" }}>{hiddenCount}</span> hidden
         </div>
-        {isPending && <span style={{ fontSize: 11, color: "var(--color-ink-4)" }}>Saving…</span>}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {isPending && <span style={{ fontSize: 11, color: "var(--color-ink-4)" }}>Saving…</span>}
+          {members.length > 0 && (
+            <button
+              onClick={() => { setPickerAccountId(pickerAccountId === "all" ? null : "all"); setPickerMemberId(""); }}
+              style={{
+                padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${pickerAccountId === "all" ? "var(--color-bronze)" : "var(--color-rule)"}`,
+                background: pickerAccountId === "all" ? "rgba(139,106,71,0.1)" : "transparent",
+                color: pickerAccountId === "all" ? "var(--color-bronze)" : "var(--color-ink-3)",
+                cursor: "pointer",
+              }}
+            >
+              {pickerAccountId === "all" ? "Cancel" : "🔗 Share all accounts"}
+            </button>
+          )}
+        </div>
       </section>
+
+      {/* Share-all picker */}
+      {pickerAccountId === "all" && (() => {
+        const visibleAccts = accounts.filter((a) => !a.is_hidden);
+        const selectedMember = members.find((m) => m.id === pickerMemberId);
+        return (
+          <div style={{
+            marginBottom: 16, borderRadius: 10, overflow: "hidden",
+            border: "2px solid var(--color-bronze)",
+            background: "var(--color-paper-deep)",
+          }}>
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-rule-soft)" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-ink)", marginBottom: 4 }}>
+                Share all {visibleAccts.length} visible accounts with:
+              </div>
+              <div style={{ fontSize: 11, color: "var(--color-ink-3)" }}>
+                You can remove individual accounts from the share after. Accounts already shared with the selected person will be skipped.
+              </div>
+            </div>
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {members.map((m) => {
+                const isSelected = pickerMemberId === m.id;
+                const displayName = m.full_name ?? m.email ?? m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setPickerMemberId(isSelected ? "" : m.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "11px 14px", borderRadius: 8, cursor: "pointer",
+                      border: `2px solid ${isSelected ? "var(--color-bronze)" : "var(--color-rule)"}`,
+                      background: isSelected ? "rgba(139,106,71,0.1)" : "var(--color-paper-card)",
+                      textAlign: "left", width: "100%", fontFamily: "inherit",
+                    }}
+                  >
+                    <div style={{
+                      width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+                      background: isSelected ? "var(--color-bronze)" : "var(--color-paper-deep)",
+                      border: `1px solid ${isSelected ? "var(--color-bronze)" : "var(--color-rule)"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 13, fontWeight: 700,
+                      color: isSelected ? "#fff" : "var(--color-ink-2)",
+                    }}>
+                      {displayName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-ink)", flex: 1 }}>
+                      {displayName}
+                    </span>
+                    {isSelected && (
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--color-bronze)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {pickerMemberId && (
+              <div style={{ padding: "0 16px 14px" }}>
+                <button
+                  onClick={() => doShareAll(pickerMemberId)}
+                  disabled={shareAllPending}
+                  style={{
+                    width: "100%", padding: "12px", borderRadius: 8,
+                    border: "none", background: "var(--color-bronze)",
+                    color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {shareAllPending ? "Sharing…" : `Share all accounts with ${selectedMember?.full_name ?? selectedMember?.email ?? "member"}`}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {error && (
         <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(154,59,42,0.08)", border: "1px solid var(--color-red)", borderRadius: 8, fontSize: 13, color: "var(--color-red)" }}>
