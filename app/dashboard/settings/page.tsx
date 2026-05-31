@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const [prefsResult, itemRowsResult, membersResult] = await Promise.all([
     service.schema("hub").from("preferences").select("finance_pin").eq("user_id", user.id).maybeSingle(),
     service.schema("finance").from("plaid_items").select("id, institution_name").eq("user_id", user.id).order("institution_name", { ascending: true }),
-    service.from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("full_name", { ascending: true }),
+    service.schema("public").from("profiles").select("id, full_name, email, avatar_url").neq("id", user.id).order("email", { ascending: true }),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,7 +48,7 @@ export default async function SettingsPage() {
     const granteeIds = [...new Set(rawShares.map((s) => s.grantee_user_id))];
     let granteeProfiles: Record<string, PlatformMember> = {};
     if (granteeIds.length > 0) {
-      const { data: profiles } = await service.from("profiles").select("id, full_name, email, avatar_url").in("id", granteeIds);
+      const { data: profiles } = await service.schema("public").from("profiles").select("id, full_name, email, avatar_url").in("id", granteeIds);
       for (const p of profiles ?? []) granteeProfiles[p.id] = p;
     }
     existingShares = rawShares.map((s) => ({

@@ -167,7 +167,7 @@ export default async function DashboardPage() {
       svc.schema("finance").from("accounts")
         .select("id, item_id, name, type, subtype, mask, current_balance")
         .in("id", sharedAccountIds),
-      svc.from("profiles").select("id, full_name, email, avatar_url").in("id", ownerIds),
+      svc.schema("public").from("profiles").select("id, full_name, email, avatar_url").in("id", ownerIds),
     ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const itemIds = ((sharedAcctRows ?? []) as any[]).map((a) => a.item_id);
