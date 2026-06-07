@@ -320,6 +320,7 @@ export default async function DashboardPage() {
             <a href="#activity" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Activity</a>
             <a href="#accounts" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Accounts</a>
             <Link href="/dashboard/import" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Import</Link>
+            <Link href="/retirement" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Retirement</Link>
             <Link href="/dashboard/settings" style={{ color: "var(--color-ink-2)", textDecoration: "none", padding: "6px 0" }}>Settings</Link>
           </nav>
 
@@ -383,6 +384,13 @@ export default async function DashboardPage() {
           )}
         </section>
 
+        {/* ── AI insights chat ────────────────────────────────── */}
+        {items.length > 0 && (
+          <section style={{ marginBottom: 36 }}>
+            <FinanceChat />
+          </section>
+        )}
+
         {/* Accounts shared with this user — shown at top so recipients
             (who may have no accounts of their own) see them immediately */}
         <SharedAccountsSection initialShares={sharedWithMe} />
@@ -445,11 +453,6 @@ export default async function DashboardPage() {
                   </div>
                 );
               })}
-            </section>
-
-            {/* ── AI insights chat ────────────────────────────────── */}
-            <section style={{ marginBottom: 36 }}>
-              <FinanceChat />
             </section>
 
             {/* ── Accounts (grouped by type) ──────────────────────── */}
