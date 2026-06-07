@@ -144,10 +144,10 @@ create policy "retirement_scenarios_owner"
 
 -- ── Grants ───────────────────────────────────────────────────────────────────
 
-grant usage on schema finance to authenticated;
-grant all on finance.retirement_profiles  to authenticated;
-grant all on finance.retirement_accounts  to authenticated;
-grant all on finance.retirement_incomes   to authenticated;
-grant all on finance.retirement_expenses  to authenticated;
-grant all on finance.retirement_debts     to authenticated;
-grant all on finance.retirement_scenarios to authenticated;
+grant usage on schema finance to authenticated, service_role;
+grant all on finance.retirement_profiles  to authenticated, service_role;
+grant all on finance.retirement_accounts  to authenticated, service_role;
+grant all on finance.retirement_incomes   to authenticated, service_role;
+grant all on finance.retirement_expenses  to authenticated, service_role;
+grant all on finance.retirement_debts     to authenticated, service_role;
+grant all on finance.retirement_scenarios to authenticated, service_role;
