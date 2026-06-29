@@ -27,14 +27,31 @@ export default async function ImportPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const service = createServiceClient() as any;
 
+  // Fetch without visible_to_family first (column may not exist if migration not yet run)
   const { data: rows } = await service
     .schema("finance")
     .from("manual_accounts")
-    .select("id, name, institution, account_type, balance, as_of_date, currency, holdings, source, created_at, visible_to_family")
+    .select("id, name, institution, account_type, balance, as_of_date, currency, holdings, source, created_at")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  const accounts = (rows ?? []) as ManualAccount[];
+  // Try to fetch sharing flags separately — gracefully fails if column not yet added
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sharingMap = new Map<string, boolean>();
+  try {
+    const { data: sharingRows } = await service
+      .schema("finance")
+      .from("manual_accounts")
+      .select("id, visible_to_family")
+      .eq("user_id", user.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((sharingRows ?? []) as any[]).forEach((r) => sharingMap.set(r.id, r.visible_to_family ?? false));
+  } catch { /* column not yet added — sharing defaults to false */ }
+
+  const accounts: ManualAccount[] = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (rows ?? []) as any[]
+  ).map((r) => ({ ...r, visible_to_family: sharingMap.get(r.id) ?? false }));
 
   return (
     <div>
