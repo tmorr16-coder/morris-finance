@@ -79,7 +79,7 @@ export default async function ImportPage() {
         <section style={{ marginBottom: 40 }}>
           <h1 className="serif" style={{ fontSize: 32, marginBottom: 6 }}>Manual account entry</h1>
           <p style={{ fontSize: 14, color: "var(--color-ink-3)", lineHeight: 1.55, marginBottom: 24, maxWidth: 560 }}>
-            Enter your 401k or other account balance directly. Paste the balance history rows from Alight to track monthly trends.
+            Enter any account balance directly — 401(k), IRA, pension, or brokerage. Paste monthly balance history rows to track trends over time.
           </p>
           <div style={{ background: "var(--color-paper-card)", border: "1px solid var(--color-rule)", borderRadius: 12, padding: "24px 28px", boxShadow: "var(--shadow-card)" }}>
             <QuickEntryForm />
