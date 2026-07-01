@@ -1,13 +1,14 @@
 "use client";
 
 // Cross-platform reminder quick-add. Drops into PlatformMenu so a user
-// can capture a reminder from any subdomain (hub/health/finance) with
+// can capture a reminder from any app (hub/health/finance/investments/student-success) with
 // title + date + optional time/recurrence/category. Inserts directly
 // into hub.reminders via the user's Supabase session — RLS scopes the
 // insert to auth.uid().
 
 import { useState, useRef, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type Category = "bill" | "medication" | "workout" | "appointment" | "personal" | "general";
 type Recurrence = "once" | "daily" | "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
@@ -47,8 +48,9 @@ function nextWeekISO(): string {
 export default function QuickAddReminder({
   sourceApp,
 }: {
-  sourceApp: "hub" | "health" | "finance" | "investments" | "student-success" | "bible" | "career";
+  sourceApp: "hub" | "family" | "ask" | "health" | "finance" | "investments" | "student-success" | "bible" | "career";
 }) {
+  const { user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(todayISO());
@@ -95,16 +97,14 @@ export default function QuickAddReminder({
       setError("Title required");
       return;
     }
+    if (!user) {
+      setError("Not signed in");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const supabase = makeClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError("Not signed in");
-        setSaving(false);
-        return;
-      }
       // Build the due_at by combining date + time in the user's local zone.
       // The Date constructor with "YYYY-MM-DDTHH:mm" treats it as local time.
       const dueAt = new Date(`${date}T${time}:00`).toISOString();
